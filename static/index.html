@@ -95,7 +95,6 @@
     .lt-dot { width: 8px; height: 8px; border-radius: 50%; }
     .lt-dot.ok   { background: var(--success); }
     .lt-dot.warn { background: var(--warning); }
-    .files-tab-badge { display: inline-flex; align-items: center; gap: 4px; }
     .new-badge { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 10px; font-weight: 700; animation: pulse 1s ease infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
   </style>
@@ -149,7 +148,7 @@
     <div class="card">
       <div class="card-title" style="justify-content:space-between">
         <span>📁 Arquivos Armazenados</span>
-        <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="loadFiles(true)">↺ Atualizar</button>
+        <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="loadFiles()">↺ Atualizar</button>
       </div>
       <div id="files-empty" class="empty"><p>Nenhum arquivo ainda.</p></div>
       <div class="files-grid" id="files-grid" style="display:none"></div>
@@ -203,20 +202,16 @@ function showTab(name, e) {
   document.getElementById('tab-' + name).classList.add('active');
   if (e) e.target.classList.add('active');
   activeTab = name;
-  // clear new-file badge when user opens files tab
-  if (name === 'files') {
-    clearNewBadge();
-    loadFiles(true);
-  }
+  if (name === 'files') { clearNewBadge(); loadFiles(); }
 }
 
-// ─ "New files" badge on tab button
+// ─ New-file badge
 let pendingNewFiles = 0;
 function markNewFile() {
-  if (activeTab === 'files') return; // already visible
+  if (activeTab === 'files') return;
   pendingNewFiles++;
-  const btn = document.getElementById('tab-btn-files');
-  btn.innerHTML = `Meus Arquivos <span class="new-badge">${pendingNewFiles}</span>`;
+  document.getElementById('tab-btn-files').innerHTML =
+    `Meus Arquivos <span class="new-badge">${pendingNewFiles}</span>`;
 }
 function clearNewBadge() {
   pendingNewFiles = 0;
@@ -260,7 +255,8 @@ async function checkLtStatus(){
     bar.style.display='flex';
     if(d.libtorrent){
       document.getElementById('lt-dot').className='lt-dot ok';
-      document.getElementById('lt-text').textContent=`libtorrent ${d.libtorrent_version} — ${d.public_trackers} trackers públicos ✓`;
+      document.getElementById('lt-text').textContent=
+        `libtorrent ${d.libtorrent_version} — ${d.public_trackers} trackers públicos ✓`;
     } else {
       document.getElementById('lt-dot').className='lt-dot warn';
       document.getElementById('lt-text').textContent='libtorrent não instalado — magnets não funcionarão';
@@ -293,66 +289,89 @@ document.addEventListener('DOMContentLoaded',()=>{
   checkLtStatus();
 });
 
-// ─ Jobs: in-place DOM reconciliation
-let jobsData=[];
-let prevCompletedIds=new Set();
+// ──────────────────────────────────────────────────
+// JOBS POLLING — chained setTimeout (never overlaps)
+// ──────────────────────────────────────────────────
+const JOBS_INTERVAL  = 2000;
+const FILES_INTERVAL = 15000;
 
-async function pollJobs(){
-  try{
-    jobsData=await fetch(API+'/api/jobs').then(r=>r.json());
-    reconcileJobs(jobsData);
-    setTxt('stat-total',String(jobsData.length));
-    setTxt('stat-active',String(jobsData.filter(j=>j.status==='downloading'||j.status==='pending').length));
+let jobsData = [];
+let prevCompletedIds = new Set();
 
-    // detect newly completed jobs → refresh files
-    const nowCompleted=new Set(jobsData.filter(j=>j.status==='completed'&&j.filename).map(j=>j.id));
-    let hasNew=false;
-    nowCompleted.forEach(id=>{ if(!prevCompletedIds.has(id)) hasNew=true; });
-    if(hasNew){
-      prevCompletedIds=nowCompleted;
-      await syncFiles(); // always sync file data
-      if(activeTab==='files') renderFilesGrid(cachedFiles);
+async function pollJobs() {
+  try {
+    const fresh = await fetch(API + '/api/jobs').then(r => r.json());
+    jobsData = fresh;
+
+    // batch all DOM writes in one rAF → no mid-frame jank
+    requestAnimationFrame(() => {
+      reconcileJobs(jobsData);
+      setTxt('stat-total',  String(jobsData.length));
+      setTxt('stat-active', String(jobsData.filter(j =>
+        j.status === 'downloading' || j.status === 'pending').length));
+    });
+
+    // detect newly completed → trigger file sync
+    const nowCompleted = new Set(
+      jobsData.filter(j => j.status === 'completed' && j.filename).map(j => j.id)
+    );
+    let hasNew = false;
+    nowCompleted.forEach(id => { if (!prevCompletedIds.has(id)) hasNew = true; });
+    prevCompletedIds = nowCompleted;
+    if (hasNew) {
+      await syncFiles();
+      if (activeTab === 'files') renderFilesGrid(cachedFiles);
       else markNewFile();
-    } else {
-      prevCompletedIds=nowCompleted;
     }
-  }catch{}
+  } catch {}
+  // next poll only AFTER this one finishes
+  setTimeout(pollJobs, JOBS_INTERVAL);
 }
 
-// ─ Files: separate slow cycle + on-demand
-let cachedFiles=[];
+// ──────────────────────────────────────────────────
+// FILES SYNC — chained setTimeout
+// ──────────────────────────────────────────────────
+let cachedFiles = [];
+let filesSyncScheduled = false;
 
-async function syncFiles(){
-  try{
-    cachedFiles=await fetch(API+'/api/files').then(r=>r.json());
-    setTxt('stat-files',String(cachedFiles.length));
-    setTxt('stat-size',humanSize(cachedFiles.reduce((s,f)=>s+f.size,0)));
-  }catch{}
+async function syncFiles() {
+  try {
+    cachedFiles = await fetch(API + '/api/files').then(r => r.json());
+    requestAnimationFrame(() => {
+      setTxt('stat-files', String(cachedFiles.length));
+      setTxt('stat-size',  humanSize(cachedFiles.reduce((s,f) => s + f.size, 0)));
+    });
+  } catch {}
 }
 
-async function loadFiles(force=false){
+async function filesSyncLoop() {
+  await syncFiles();
+  setTimeout(filesSyncLoop, FILES_INTERVAL);
+}
+
+async function loadFiles() {
   await syncFiles();
   renderFilesGrid(cachedFiles);
 }
 
-function renderFilesGrid(files){
-  const grid=document.getElementById('files-grid');
-  const empty=document.getElementById('files-empty');
-  if(!files.length){grid.style.display='none';empty.style.display='block';return;}
-  grid.style.display='grid'; empty.style.display='none';
-  grid.innerHTML=files.map(f=>{
-    const canPlay=f.is_video||f.is_audio;
-    const thumb=f.is_video
-      ?`<div class="file-thumb" onclick="openPlayer('${f.name}')">🎬<div class="play-btn">▶</div></div>`
-      :f.is_audio
-      ?`<div class="file-thumb" onclick="openPlayer('${f.name}')">🎵<div class="play-btn">▶</div></div>`
-      :`<div class="file-thumb" style="cursor:default">${fileIcon(f.name)}</div>`;
+function renderFilesGrid(files) {
+  const grid  = document.getElementById('files-grid');
+  const empty = document.getElementById('files-empty');
+  if (!files.length) { grid.style.display = 'none'; empty.style.display = 'block'; return; }
+  grid.style.display = 'grid'; empty.style.display = 'none';
+  grid.innerHTML = files.map(f => {
+    const canPlay = f.is_video || f.is_audio;
+    const thumb = f.is_video
+      ? `<div class="file-thumb" onclick="openPlayer('${f.name}')">🎬<div class="play-btn">▶</div></div>`
+      : f.is_audio
+      ? `<div class="file-thumb" onclick="openPlayer('${f.name}')">🎵<div class="play-btn">▶</div></div>`
+      : `<div class="file-thumb" style="cursor:default">${fileIcon(f.name)}</div>`;
     return `<div class="file-card">${thumb}
       <div class="file-info">
         <div class="file-info-name" title="${f.name}">${f.name}</div>
         <div class="file-info-size">${f.size_human}</div>
         <div class="file-actions">
-          ${canPlay?`<button class="btn-green" onclick="openPlayer('${f.name}')">&#x25B6; Play</button>`:''}
+          ${canPlay ? `<button class="btn-green" onclick="openPlayer('${f.name}')">&#x25B6; Play</button>` : ''}
           <a href="/api/files/${encodeURIComponent(f.name)}?dl=1" class="btn-sm" download>⬇️</a>
           <button class="btn btn-danger" onclick="deleteFile('${f.name}')">&#x1F5D1;</button>
         </div>
@@ -360,46 +379,84 @@ function renderFilesGrid(files){
   }).join('');
 }
 
-async function deleteFile(name){
-  if(!confirm(`Excluir "${name}"?`)) return;
-  await fetch(API+'/api/files/'+encodeURIComponent(name),{method:'DELETE'});
-  await loadFiles(true);
-  toast('Arquivo excluído','success');
+async function deleteFile(name) {
+  if (!confirm(`Excluir "${name}"?`)) return;
+  await fetch(API + '/api/files/' + encodeURIComponent(name), {method:'DELETE'});
+  await loadFiles();
+  toast('Arquivo excluído', 'success');
 }
 
 // ─ Badge/label maps
-const BADGE={pending:'badge-pending',downloading:'badge-downloading',torrent_dl:'badge-torrent',completed:'badge-completed',failed:'badge-failed'};
-const LABEL={pending:'Pendente',downloading:'Baixando',torrent_dl:'🌊 Torrent',completed:'Concluído',failed:'Falhou'};
-function statusKey(job){return(job.status==='downloading'&&job.type==='torrent')?'torrent_dl':job.status;}
+const BADGE = {
+  pending:'badge-pending', downloading:'badge-downloading',
+  torrent_dl:'badge-torrent', completed:'badge-completed', failed:'badge-failed',
+};
+const LABEL = {
+  pending:'Pendente', downloading:'Baixando',
+  torrent_dl:'🌊 Torrent', completed:'Concluído', failed:'Falhou',
+};
+function statusKey(job) {
+  return (job.status === 'downloading' && job.type === 'torrent') ? 'torrent_dl' : job.status;
+}
 
-function reconcileJobs(jobs){
-  const container=document.getElementById('jobs-list');
-  const emptyEl=document.getElementById('jobs-empty');
-  if(!jobs.length){container.querySelectorAll('.job-item').forEach(n=>n.remove());if(emptyEl)emptyEl.style.display='';return;}
-  if(emptyEl)emptyEl.style.display='none';
-  const existing={};
-  container.querySelectorAll('.job-item[data-id]').forEach(n=>{existing[n.dataset.id]=n;});
-  jobs.forEach((job,idx)=>{
-    let node=existing[job.id];
-    if(!node){node=createJobNode(job);}else{patchJobNode(node,job);}
-    const siblings=container.querySelectorAll('.job-item[data-id]');
-    const sibling=siblings[idx];
-    if(sibling!==node){if(sibling)container.insertBefore(node,sibling);else container.appendChild(node);}
+// ──────────────────────────────────────────────────
+// DOM RECONCILIATION — in-place, zero full re-render
+// ──────────────────────────────────────────────────
+function reconcileJobs(jobs) {
+  const container = document.getElementById('jobs-list');
+  const emptyEl   = document.getElementById('jobs-empty');
+
+  if (!jobs.length) {
+    container.querySelectorAll('.job-item').forEach(n => n.remove());
+    if (emptyEl) emptyEl.style.display = '';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // build existing-node map
+  const existing = {};
+  container.querySelectorAll('.job-item[data-id]').forEach(n => { existing[n.dataset.id] = n; });
+
+  // snapshot current siblings ONCE — avoids repeated querySelectorAll inside loop
+  // (repeated queries force layout recalculation on every iteration → jank)
+  const orderedNodes = Array.from(container.querySelectorAll('.job-item[data-id]'));
+
+  jobs.forEach((job, idx) => {
+    let node = existing[job.id];
+    if (!node) {
+      node = createJobNode(job);
+    } else {
+      patchJobNode(node, job);
+    }
+
+    // maintain order using the pre-snapshotted array
+    const sibling = orderedNodes[idx];
+    if (sibling !== node) {
+      if (sibling) container.insertBefore(node, sibling);
+      else         container.appendChild(node);
+      // update snapshot so subsequent insertions stay correct
+      orderedNodes.splice(idx, 0, node);
+    }
   });
-  const alive=new Set(jobs.map(j=>j.id));
-  container.querySelectorAll('.job-item[data-id]').forEach(n=>{if(!alive.has(n.dataset.id))n.remove();});
+
+  // remove stale nodes
+  const alive = new Set(jobs.map(j => j.id));
+  container.querySelectorAll('.job-item[data-id]').forEach(n => {
+    if (!alive.has(n.dataset.id)) n.remove();
+  });
 }
 
-function displayName(job){
-  if(job.filename)return job.filename;
-  if(isMagnet(job.url))return'Torrent — aguardando metadados…';
-  return job.url.split('/').pop().split('?')[0]||job.url;
+function displayName(job) {
+  if (job.filename) return job.filename;
+  if (isMagnet(job.url)) return 'Torrent — aguardando metadados…';
+  return job.url.split('/').pop().split('?')[0] || job.url;
 }
 
-function createJobNode(job){
-  const div=document.createElement('div');
-  div.className='job-item'; div.dataset.id=job.id;
-  div.innerHTML=`
+function createJobNode(job) {
+  const div = document.createElement('div');
+  div.className = 'job-item';
+  div.dataset.id = job.id;
+  div.innerHTML = `
     <div class="job-header">
       <span class="job-name" data-r="name"></span>
       <div data-r="btns" style="display:flex;gap:6px;align-items:center"></div>
@@ -409,133 +466,142 @@ function createJobNode(job){
     <div class="progress-bar" data-r="pb" style="display:none">
       <div class="progress-fill" data-r="fill" style="width:0%"></div>
     </div>`;
-  patchJobNode(div,job);
+  patchJobNode(div, job);
   return div;
 }
 
-function patchJobNode(node,job){
-  const sk=statusKey(job);
-  const name=displayName(job);
-  const nameEl=node.querySelector('[data-r=name]');
-  const nv=fileIcon(name)+' '+name;
-  if(nameEl.textContent!==nv)nameEl.textContent=nv;
-  const urlEl=node.querySelector('[data-r=url]');
-  const uv=isMagnet(job.url)?'🌊 '+job.url.slice(0,80)+(job.url.length>80?'…':''):job.url;
-  if(urlEl.textContent!==uv)urlEl.textContent=uv;
-  const metaEl=node.querySelector('[data-r=meta]');
-  const bc=BADGE[sk]||'badge-pending';
-  const lb=LABEL[sk]||job.status;
-  let m=`<span class="badge ${bc}">${lb}</span>`;
-  if(job.size_human&&job.size_human!=='—')m+=`<span>${job.size_human}</span>`;
-  if(job.status==='downloading')m+=`<span>${job.progress||0}%</span>`;
-  if(job.speed)m+=`<span>📡 ${job.speed}</span>`;
-  if(job.seeds!=null&&job.seeds>0)m+=`<span>🌱 ${job.seeds} seeds</span>`;
-  if(job.peers!=null&&job.peers>0)m+=`<span>👥 ${job.peers} peers</span>`;
-  if(job.info)m+=`<span style="color:#60a5fa;font-size:11px">${job.info}</span>`;
-  if(job.error)m+=`<span style="color:var(--danger)">${job.error}</span>`;
-  if(metaEl.innerHTML!==m)metaEl.innerHTML=m;
-  const pb=node.querySelector('[data-r=pb]');
-  const fill=node.querySelector('[data-r=fill]');
-  const showPb=job.status==='downloading';
-  if(pb.style.display!==(showPb?'':'none'))pb.style.display=showPb?'':'none';
-  if(showPb){
-    const pct=(job.progress||0)+'%';
-    if(fill.style.width!==pct)fill.style.width=pct;
-    const cls='progress-fill'+(job.type==='torrent'?' torrent':'');
-    if(fill.className!==cls)fill.className=cls;
+function patchJobNode(node, job) {
+  const sk   = statusKey(job);
+  const name = displayName(job);
+
+  const nameEl = node.querySelector('[data-r=name]');
+  const nv = fileIcon(name) + ' ' + name;
+  if (nameEl.textContent !== nv) nameEl.textContent = nv;
+
+  const urlEl = node.querySelector('[data-r=url]');
+  const uv = isMagnet(job.url)
+    ? '🌊 ' + job.url.slice(0, 80) + (job.url.length > 80 ? '…' : '')
+    : job.url;
+  if (urlEl.textContent !== uv) urlEl.textContent = uv;
+
+  const metaEl = node.querySelector('[data-r=meta]');
+  const bc = BADGE[sk] || 'badge-pending';
+  const lb = LABEL[sk] || job.status;
+  let m = `<span class="badge ${bc}">${lb}</span>`;
+  if (job.size_human && job.size_human !== '—') m += `<span>${job.size_human}</span>`;
+  if (job.status === 'downloading') m += `<span>${job.progress || 0}%</span>`;
+  if (job.speed)  m += `<span>📡 ${job.speed}</span>`;
+  if (job.seeds != null && job.seeds > 0) m += `<span>🌱 ${job.seeds} seeds</span>`;
+  if (job.peers != null && job.peers > 0) m += `<span>👥 ${job.peers} peers</span>`;
+  if (job.info)  m += `<span style="color:#60a5fa;font-size:11px">${job.info}</span>`;
+  if (job.error) m += `<span style="color:var(--danger)">${job.error}</span>`;
+  if (metaEl.innerHTML !== m) metaEl.innerHTML = m;
+
+  const pb   = node.querySelector('[data-r=pb]');
+  const fill = node.querySelector('[data-r=fill]');
+  const showPb = job.status === 'downloading';
+  if (pb.style.display !== (showPb ? '' : 'none')) pb.style.display = showPb ? '' : 'none';
+  if (showPb) {
+    const pct = (job.progress || 0) + '%';
+    if (fill.style.width !== pct) fill.style.width = pct;
+    const cls = 'progress-fill' + (job.type === 'torrent' ? ' torrent' : '');
+    if (fill.className !== cls) fill.className = cls;
   }
-  const prevSig=node.dataset.sig||'';
-  const newSig=job.status+'|'+(job.filename||'');
-  if(prevSig!==newSig){
-    node.dataset.sig=newSig;
-    const btns=node.querySelector('[data-r=btns]');
-    btns.innerHTML='';
-    if(job.status==='completed'&&job.filename){
-      const a=document.createElement('a');
-      a.href='/api/files/'+encodeURIComponent(job.filename)+'?dl=1';
-      a.className='btn-sm'; a.download=job.filename; a.textContent='⬇️ Baixar';
+
+  const prevSig = node.dataset.sig || '';
+  const newSig  = job.status + '|' + (job.filename || '');
+  if (prevSig !== newSig) {
+    node.dataset.sig = newSig;
+    const btns = node.querySelector('[data-r=btns]');
+    btns.innerHTML = '';
+    if (job.status === 'completed' && job.filename) {
+      const a = document.createElement('a');
+      a.href = '/api/files/' + encodeURIComponent(job.filename) + '?dl=1';
+      a.className = 'btn-sm'; a.download = job.filename; a.textContent = '⬇️ Baixar';
       btns.appendChild(a);
-      if(isVideo(job.filename)||isAudio(job.filename)){
-        const b=document.createElement('button');
-        b.className='btn-green'; b.textContent='▶ Reproduzir';
-        b.onclick=()=>openPlayer(job.filename);
+      if (isVideo(job.filename) || isAudio(job.filename)) {
+        const b = document.createElement('button');
+        b.className = 'btn-green'; b.textContent = '▶ Reproduzir';
+        b.onclick = () => openPlayer(job.filename);
         btns.appendChild(b);
       }
     }
-    const del=document.createElement('button');
-    del.className='btn btn-danger'; del.textContent='✕';
-    del.onclick=()=>deleteJob(job.id);
+    const del = document.createElement('button');
+    del.className = 'btn btn-danger'; del.textContent = '✕';
+    del.onclick = () => deleteJob(job.id);
     btns.appendChild(del);
   }
 }
 
-async function deleteJob(id){
-  await fetch(API+'/api/jobs/'+id,{method:'DELETE'});
-  pollJobs();
+async function deleteJob(id) {
+  await fetch(API + '/api/jobs/' + id, {method:'DELETE'});
+  // immediate local removal for snappy feel
+  jobsData = jobsData.filter(j => j.id !== id);
+  requestAnimationFrame(() => reconcileJobs(jobsData));
 }
-async function clearCompleted(){
-  await Promise.all(jobsData.filter(j=>j.status==='completed'||j.status==='failed').map(j=>fetch(API+'/api/jobs/'+j.id,{method:'DELETE'})));
-  pollJobs();
+async function clearCompleted() {
+  const toDelete = jobsData.filter(j => j.status==='completed'||j.status==='failed');
+  await Promise.all(toDelete.map(j => fetch(API+'/api/jobs/'+j.id,{method:'DELETE'})));
+  jobsData = jobsData.filter(j => j.status!=='completed'&&j.status!=='failed');
+  requestAnimationFrame(() => reconcileJobs(jobsData));
 }
 
 // ─ Player
-function openPlayer(filename){
-  const url=API+'/api/files/'+encodeURIComponent(filename);
-  document.getElementById('player-title').textContent=filename;
-  document.getElementById('player-dl-link').href=url+'?dl=1';
-  document.getElementById('player-dl-link').download=filename;
-  if(isVideo(filename)){
-    document.getElementById('player-video-wrap').style.display='block';
-    document.getElementById('player-audio-wrap').style.display='none';
-    const v=document.getElementById('player-video'); v.src=url; v.load();
+function openPlayer(filename) {
+  const url = API + '/api/files/' + encodeURIComponent(filename);
+  document.getElementById('player-title').textContent = filename;
+  document.getElementById('player-dl-link').href     = url + '?dl=1';
+  document.getElementById('player-dl-link').download  = filename;
+  if (isVideo(filename)) {
+    document.getElementById('player-video-wrap').style.display = 'block';
+    document.getElementById('player-audio-wrap').style.display = 'none';
+    const v = document.getElementById('player-video'); v.src = url; v.load();
   } else {
-    document.getElementById('player-video-wrap').style.display='none';
-    document.getElementById('player-audio-wrap').style.display='flex';
-    const a=document.getElementById('player-audio'); a.src=url; a.load();
+    document.getElementById('player-video-wrap').style.display = 'none';
+    document.getElementById('player-audio-wrap').style.display = 'flex';
+    const a = document.getElementById('player-audio'); a.src = url; a.load();
   }
   document.getElementById('player-modal').classList.add('open');
-  document.body.style.overflow='hidden';
+  document.body.style.overflow = 'hidden';
 }
-function closePlayer(){
+function closePlayer() {
   document.getElementById('player-modal').classList.remove('open');
-  const v=document.getElementById('player-video'); v.pause(); v.src='';
-  const a=document.getElementById('player-audio'); a.pause(); a.src='';
-  document.body.style.overflow='';
+  const v = document.getElementById('player-video'); v.pause(); v.src = '';
+  const a = document.getElementById('player-audio'); a.pause(); a.src = '';
+  document.body.style.overflow = '';
 }
-document.getElementById('player-modal').addEventListener('click',function(e){if(e.target===this)closePlayer();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closePlayer();});
+document.getElementById('player-modal').addEventListener('click', function(e) { if (e.target === this) closePlayer(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
 
 // ─ Upload
-async function uploadFiles(files){
-  if(!files.length)return;
-  const form=new FormData();
-  for(const f of files)form.append('file',f);
-  const prog=document.getElementById('upload-progress');
-  const fill=document.getElementById('upload-fill');
-  const stat=document.getElementById('upload-status');
-  prog.style.display='block'; fill.style.width='30%';
-  stat.textContent=`Enviando ${files.length} arquivo(s)…`;
-  try{
-    const data=await fetch(API+'/api/upload',{method:'POST',body:form}).then(r=>r.json());
-    fill.style.width='100%';
-    stat.textContent=`✓ ${data.uploaded.length} arquivo(s) enviado(s)`;
-    toast(`${data.uploaded.length} arquivo(s) enviado(s)`,'success');
-    await syncFiles(); // update stats + cache after upload
-    if(activeTab==='files') renderFilesGrid(cachedFiles);
+async function uploadFiles(files) {
+  if (!files.length) return;
+  const form = new FormData();
+  for (const f of files) form.append('file', f);
+  const prog = document.getElementById('upload-progress');
+  const fill = document.getElementById('upload-fill');
+  const stat = document.getElementById('upload-status');
+  prog.style.display = 'block'; fill.style.width = '30%';
+  stat.textContent = `Enviando ${files.length} arquivo(s)…`;
+  try {
+    const data = await fetch(API+'/api/upload',{method:'POST',body:form}).then(r=>r.json());
+    fill.style.width = '100%';
+    stat.textContent = `✓ ${data.uploaded.length} arquivo(s) enviado(s)`;
+    toast(`${data.uploaded.length} arquivo(s) enviado(s)`, 'success');
+    await syncFiles();
+    if (activeTab === 'files') renderFilesGrid(cachedFiles);
     else markNewFile();
-    setTimeout(()=>{prog.style.display='none';fill.style.width='0%';},2000);
-  }catch(e){stat.textContent='Erro: '+e.message;toast('Falha no upload','error');}
+    setTimeout(() => { prog.style.display='none'; fill.style.width='0%'; }, 2000);
+  } catch(e) { stat.textContent='Erro: '+e.message; toast('Falha no upload','error'); }
 }
-const dz=document.getElementById('dropzone');
-dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
-dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
-dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');uploadFiles(e.dataTransfer.files);});
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); uploadFiles(e.dataTransfer.files); });
 
 // ─ Boot
-pollJobs();
-syncFiles();
-setInterval(pollJobs,2000);     // jobs: fast cycle
-setInterval(syncFiles,15000);   // files stats: slow background sync
+pollJobs();       // starts chained job poll loop
+filesSyncLoop();  // starts chained file stats loop
 </script>
 </body>
 </html>
