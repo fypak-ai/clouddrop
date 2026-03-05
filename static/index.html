@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudDrop – Cloud Download Manager</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #1f2937; --border: #30363d;
+      --accent: #2563eb; --accent-hover: #1d4ed8; --accent-light: rgba(37,99,235,.15);
+      --success: #22c55e; --danger: #ef4444; --text: #e6edf3; --muted: #8b949e; --radius: 10px;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .logo { font-size: 18px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .logo svg { color: var(--accent); }
+    .nav-tabs { display: flex; gap: 4px; }
+    .nav-tab { background: none; border: none; color: var(--muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; }
+    .nav-tab:hover, .nav-tab.active { color: var(--text); background: var(--surface2); }
+    .container { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+    .card-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .input-row { display: flex; gap: 10px; }
+    .input-row input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px; outline: none; transition: border .15s; }
+    .input-row input:focus { border-color: var(--accent); }
+    .input-row input::placeholder { color: var(--muted); }
+    .btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .15s; white-space: nowrap; }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-ghost { background: var(--surface2); color: var(--text); }
+    .btn-ghost:hover { background: var(--border); }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 5px 10px; font-size: 12px; }
+    .btn-danger:hover { background: rgba(239,68,68,.1); }
+    .btn-sm { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 500; cursor: pointer; }
+    .dropzone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px; text-align: center; cursor: pointer; transition: all .2s; }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: var(--accent-light); }
+    .dropzone p { color: var(--muted); font-size: 14px; }
+    .dropzone span { color: var(--accent); font-weight: 600; }
+    #file-input { display: none; }
+    .jobs-list { display: flex; flex-direction: column; gap: 12px; }
+    .job-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+    .job-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 12px; }
+    .job-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .job-url { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 6px; }
+    .job-meta { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-pending { background: rgba(107,114,128,.2); color: #9ca3af; }
+    .badge-downloading { background: rgba(37,99,235,.2); color: #60a5fa; }
+    .badge-completed { background: rgba(34,197,94,.15); color: var(--success); }
+    .badge-failed { background: rgba(239,68,68,.15); color: var(--danger); }
+    .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .3s; }
+    .files-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .files-table th { text-align: left; padding: 8px 12px; color: var(--muted); font-weight: 500; font-size: 12px; border-bottom: 1px solid var(--border); }
+    .files-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .files-table tr:last-child td { border-bottom: none; }
+    .files-table tr:hover td { background: var(--surface2); }
+    .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    #toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+    .toast { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 14px; min-width: 240px; animation: slideIn .2s ease; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+    .toast.success { border-left: 3px solid var(--success); }
+    .toast.error { border-left: 3px solid var(--danger); }
+    @keyframes slideIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .stats-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; flex: 1; min-width: 120px; }
+    .stat-value { font-size: 22px; font-weight: 700; }
+    .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+    CloudDrop
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showTab('downloads',event)">Downloads</button>
+    <button class="nav-tab" onclick="showTab('files',event)">My Files</button>
+    <button class="nav-tab" onclick="showTab('upload',event)">Upload</button>
+  </div>
+</header>
+<div class="container">
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-value" id="stat-total">0</div><div class="stat-label">Total Downloads</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-active">0</div><div class="stat-label">Active</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-files">0</div><div class="stat-label">Files Stored</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-size">0 B</div><div class="stat-label">Total Size</div></div>
+  </div>
+  <div class="tab-content active" id="tab-downloads">
+    <div class="card">
+      <div class="card-title">Remote Download</div>
+      <div class="input-row">
+        <input type="text" id="url-input" placeholder="Paste a URL — HTTP, FTP, direct link…" />
+        <input type="text" id="fname-input" placeholder="Filename (optional)" style="max-width:200px"/>
+        <button class="btn" id="dl-btn" onclick="startDownload()">Download</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span>Download Queue</span>
+        <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="clearCompleted()">Clear Completed</button>
+      </div>
+      <div class="jobs-list" id="jobs-list">
+        <div class="empty"><p>No downloads yet. Paste a URL above to start.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-files">
+    <div class="card">
+      <div class="card-title">Stored Files</div>
+      <div class="empty" id="files-empty"><p>No files stored yet.</p></div>
+      <table class="files-table" id="files-table" style="display:none"><thead><tr><th>Name</th><th>Size</th><th>Actions</th></tr></thead><tbody id="files-body"></tbody></table>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-upload">
+    <div class="card">
+      <div class="card-title">Upload Local Files</div>
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+        <p style="margin-bottom:8px"><span>Click to browse</span> or drag and drop files here</p>
+        <p style="font-size:12px">Any file type supported</p>
+      </div>
+      <input type="file" id="file-input" multiple onchange="uploadFiles(this.files)" />
+      <div id="upload-progress" style="margin-top:14px;display:none">
+        <div class="progress-bar"><div class="progress-fill" id="upload-fill" style="width:0%"></div></div>
+        <p style="font-size:12px;color:var(--muted);margin-top:6px" id="upload-status">Uploading…</p>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script>
+const API='';
+function showTab(name,e){document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');e.target.classList.add('active');if(name==='files')loadFiles();}
+function toast(msg,type='info'){const el=document.createElement('div');el.className='toast '+type;el.textContent=msg;document.getElementById('toast-container').appendChild(el);setTimeout(()=>el.remove(),3500);}
+function fileIcon(n){const e=n.split('.').pop().toLowerCase();return({mp4:'🎬',mkv:'🎬',avi:'🎬',mp3:'🎵',flac:'🎵',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',pdf:'📄',zip:'🗜️',rar:'🗜️',torrent:'🌊'}[e]||'📁');}
+let jobsData=[];
+async function startDownload(){const url=document.getElementById('url-input').value.trim();const fn=document.getElementById('fname-input').value.trim();if(!url){toast('Please enter a URL','error');return;}const btn=document.getElementById('dl-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Starting…';try{const res=await fetch(API+'/api/remote-download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,filename:fn})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Failed');document.getElementById('url-input').value='';document.getElementById('fname-input').value='';toast('Download started!','success');}catch(e){toast('Error: '+e.message,'error');}finally{btn.disabled=false;btn.textContent='Download';}}
+document.addEventListener('DOMContentLoaded',()=>{document.getElementById('url-input').addEventListener('keydown',e=>{if(e.key==='Enter')startDownload();});});
+async function loadJobs(){try{const res=await fetch(API+'/api/jobs');jobsData=await res.json();renderJobs();updateStats();}catch{}}
+function renderJobs(){const c=document.getElementById('jobs-list');if(!jobsData.length){c.innerHTML='<div class="empty"><p>No downloads yet.</p></div>';return;}c.innerHTML=jobsData.map(job=>{const name=job.filename||job.url.split('/').pop().split('?')[0]||job.url;const bc={pending:'badge-pending',downloading:'badge-downloading',completed:'badge-completed',failed:'badge-failed'}[job.status]||'badge-pending';const sl={pending:'Pending',downloading:'Downloading',completed:'Completed',failed:'Failed'}[job.status]||job.status;const pb=job.status==='downloading'?`<div class="progress-bar"><div class="progress-fill" style="width:${job.progress||0}%"></div></div>`:'';const dlBtn=job.status==='completed'&&job.filename?`<a href="/api/files/${encodeURIComponent(job.filename)}" class="btn-sm" download>↓ Save</a>`:'';return`<div class="job-item"><div class="job-header"><span class="job-name">${fileIcon(name)} ${name}</span><div style="display:flex;gap:6px">${dlBtn}<button class="btn btn-danger" onclick="deleteJob('${job.id}')">&#x2715;</button></div></div><div class="job-url">${job.url}</div><div class="job-meta"><span class="badge ${bc}">${sl}</span>${job.size_human&&job.size_human!=='&mdash;'?`<span>${job.size_human}</span>`:''}${job.status==='downloading'?`<span>${job.progress||0}%</span>`:''}${job.error?`<span style="color:var(--danger)">${job.error}</span>`:''}</div>${pb}</div>`;}).join('');}
+async function deleteJob(id){await fetch(API+'/api/jobs/'+id,{method:'DELETE'});loadJobs();}
+async function clearCompleted(){await Promise.all(jobsData.filter(j=>j.status==='completed'||j.status==='failed').map(j=>fetch(API+'/api/jobs/'+j.id,{method:'DELETE'})));loadJobs();}
+async function loadFiles(){try{const res=await fetch(API+'/api/files');const files=await res.json();const tbody=document.getElementById('files-body');const table=document.getElementById('files-table');const empty=document.getElementById('files-empty');if(!files.length){table.style.display='none';empty.style.display='block';return;}table.style.display='table';empty.style.display='none';tbody.innerHTML=files.map(f=>`<tr><td>${fileIcon(f.name)} ${f.name}</td><td>${f.size_human}</td><td style="display:flex;gap:8px"><a href="/api/files/${encodeURIComponent(f.name)}" class="btn btn-sm" download>↓ Download</a><button class="btn btn-danger" onclick="deleteFile('${f.name}')">Delete</button></td></tr>`).join('');}catch{}}
+async function deleteFile(name){if(!confirm(`Delete "${name}"?`))return;await fetch(API+'/api/files/'+encodeURIComponent(name),{method:'DELETE'});loadFiles();toast('File deleted','success');}
+async function uploadFiles(files){if(!files.length)return;const form=new FormData();for(const f of files)form.append('file',f);const prog=document.getElementById('upload-progress');const fill=document.getElementById('upload-fill');const status=document.getElementById('upload-status');prog.style.display='block';fill.style.width='30%';status.textContent=`Uploading ${files.length} file(s)…`;try{const res=await fetch(API+'/api/upload',{method:'POST',body:form});const data=await res.json();fill.style.width='100%';status.textContent=`✓ Uploaded ${data.uploaded.length} file(s)`;toast(`Uploaded ${data.uploaded.length} file(s)`,'success');setTimeout(()=>{prog.style.display='none';fill.style.width='0%';},2000);}catch(e){status.textContent='Error: '+e.message;toast('Upload failed','error');}}
+const dz=document.getElementById('dropzone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');uploadFiles(e.dataTransfer.files);});
+async function updateStats(){const total=jobsData.length;const active=jobsData.filter(j=>j.status==='downloading'||j.status==='pending').length;document.getElementById('stat-total').textContent=total;document.getElementById('stat-active').textContent=active;try{const res=await fetch(API+'/api/files');const files=await res.json();document.getElementById('stat-files').textContent=files.length;const tb=files.reduce((s,f)=>s+f.size,0);document.getElementById('stat-size').textContent=humanSize(tb);}catch{}}
+function humanSize(b){const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<u.length-1){b/=1024;i++;}return b.toFixed(1)+' '+u[i];}
+loadJobs();setInterval(loadJobs,2000);
+</script>
+</body>
+</html>
