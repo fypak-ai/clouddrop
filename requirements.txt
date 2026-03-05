@@ -5,4 +5,3 @@ gunicorn>=21.2.0
 libtorrent>=2.0.0
 aiohttp>=3.9.0
 beautifulsoup4>=4.12.0
-nest_asyncio>=1.6.0

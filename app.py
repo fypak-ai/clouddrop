@@ -92,8 +92,10 @@ def _make_lt_session():
         pass
 
     try:
-        # DHT disabled (Railway blocks UDP) — using HTTP trackers only
+        # DHT disabled (Railway blocks UDP) — usando HTTP trackers apenas
         ses.start_lsd()
+        ses.start_upnp()
+        ses.start_natpmp()
     except Exception:
         pass
 
@@ -225,7 +227,7 @@ def download_torrent(job_id, magnet_url):
 
         jobs[job_id]["info"] = "Aguardando metadados (DHT/trackers)..."
 
-        for _ in range(480):  # 240s timeout — HTTP trackers are slower than UDP
+        for _ in range(180):
             if handle.has_metadata():
                 break
             time.sleep(0.5)
@@ -599,20 +601,17 @@ def dropbox_upload():
     return jsonify(results)
 
 
+
 # ════════════════════════════════════════════════════════════════════════════════
 # TORRENT SEARCH — agregador inline (9 fontes)
+# Uses threads + asyncio.run() per source to avoid Gunicorn event loop conflicts
 # ════════════════════════════════════════════════════════════════════════════════
-import asyncio
-import urllib.parse
-import aiohttp
-try:
-    import nest_asyncio as _nest_asyncio
-    _nest_asyncio.apply()
-except ImportError:
-    pass
-
-from abc import ABC, abstractmethod as _abstractmethod
+import asyncio as _asyncio
+import urllib.parse as _urllib_parse
+import aiohttp as _aiohttp
+from abc import ABC as _ABC, abstractmethod as _abstractmethod
 from typing import List as _List, Dict as _Dict
+from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor, as_completed as _as_completed
 
 _SEARCH_HEADERS = {
     "User-Agent": (
@@ -625,7 +624,7 @@ _SEARCH_HEADERS = {
 }
 
 
-class _TorrentSource(ABC):
+class _TorrentSource(_ABC):
     id: str = ""
     name: str = ""
     categories: _List[str] = []
@@ -651,13 +650,30 @@ class _TorrentSource(ABC):
         return r
 
     def _build_magnet(self, info_hash, name="", trackers=None):
-        m = f"magnet:?xt=urn:btih:{info_hash}&dn={urllib.parse.quote(name)}"
+        m = f"magnet:?xt=urn:btih:{info_hash}&dn={_urllib_parse.quote(name)}"
         for tr in (trackers or []):
-            m += f"&tr={urllib.parse.quote(tr)}"
+            m += f"&tr={_urllib_parse.quote(tr)}"
         return m
 
+    def search_sync(self, query: str, category: str, limit: int) -> _List[_Dict]:
+        """Run async search in a fresh event loop (safe inside a thread)"""
+        loop = _asyncio.new_event_loop()
+        try:
+            connector = _aiohttp.TCPConnector(ssl=False, loop=loop)
+            async def _run():
+                async with _aiohttp.ClientSession(
+                    connector=connector, headers=_SEARCH_HEADERS
+                ) as session:
+                    return await self.search(session, query, category, limit)
+            return loop.run_until_complete(_run())
+        except Exception as e:
+            return []
+        finally:
+            loop.close()
 
-# ── Source: sources/yts.py ──
+
+# ── sources/yts.py ──
+import urllib.parse
 
 TRACKERS = [
     "udp://open.demonii.com:1337/announce",
@@ -706,7 +722,7 @@ class _YTSSource(_TorrentSource):
         return f"magnet:?xt=urn:btih:{hash_}&dn={urllib.parse.quote(title)}&tr={tr}"
 
 
-# ── Source: sources/nyaa.py ──
+# ── sources/nyaa.py ──
 import re
 
 
@@ -755,7 +771,8 @@ class _NyaaSource(_TorrentSource):
         return results
 
 
-# ── Source: sources/tpb.py ──
+# ── sources/tpb.py ──
+import urllib.parse
 
 TRACKERS = [
     "udp://tracker.opentrackr.org:1337/announce",
@@ -821,7 +838,8 @@ class _TPBSource(_TorrentSource):
         return f"magnet:?xt=urn:btih:{hash_}&dn={dn}&tr={tr}"
 
 
-# ── Source: sources/x1337.py ──
+# ── sources/x1337.py ──
+import urllib.parse
 from bs4 import BeautifulSoup
 
 
@@ -894,7 +912,7 @@ class _X1337Source(_TorrentSource):
             return None
 
 
-# ── Source: sources/eztv.py ──
+# ── sources/eztv.py ──
 
 
 class _EZTVSource(_TorrentSource):
@@ -927,7 +945,8 @@ class _EZTVSource(_TorrentSource):
             return []
 
 
-# ── Source: sources/torrentgalaxy.py ──
+# ── sources/torrentgalaxy.py ──
+import urllib.parse
 from bs4 import BeautifulSoup
 
 
@@ -985,7 +1004,8 @@ class _TorrentGalaxySource(_TorrentSource):
         return results
 
 
-# ── Source: sources/kickass.py ──
+# ── sources/kickass.py ──
+import urllib.parse
 
 TRACKERS = [
     "udp://tracker.coppersurfer.tk:6969/announce",
@@ -1042,7 +1062,8 @@ class _KickassSource(_TorrentSource):
         return f"magnet:?xt=urn:btih:{hash_}&dn={urllib.parse.quote(name)}&tr={tr}"
 
 
-# ── Source: sources/limetorrents.py ──
+# ── sources/limetorrents.py ──
+import urllib.parse
 from bs4 import BeautifulSoup
 
 
@@ -1103,7 +1124,8 @@ class _LimeTorrentsSource(_TorrentSource):
         return results
 
 
-# ── Source: sources/rarbg.py ──
+# ── sources/rarbg.py ──
+import urllib.parse
 
 TRACKERS = [
     "udp://tracker.opentrackr.org:1337/announce",
@@ -1165,35 +1187,25 @@ class _RARBGSource(_TorrentSource):
         return []
 
 
-
-# ── Search aggregator ──────────────────────────────────────────────────────────
+# ── Aggregator & Flask routes ──────────────────────────────────────────────────
 _SEARCH_SOURCES = [
-    __YTSSource(), __NyaaSource(), __EZTVSource(), __X1337Source(), __TPBSource(),
-    __RARBGSource(), __TorrentGalaxySource(), __KickassSource(), __LimeTorrentsSource(),
+    _YTSSource(), _NyaaSource(), _EZTVSource(), _X1337Source(), _TPBSource(),
+    _RARBGSource(), _TorrentGalaxySource(), _KickassSource(), _LimeTorrentsSource(),
 ]
 
-def _get_search_loop():
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError
-        return loop
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop
-
-async def _search_all(enabled_sources, query, category, limit):
+def _run_search(enabled_sources, query, category, limit):
     results = []
-    connector = aiohttp.TCPConnector(ssl=False)
-    async with aiohttp.ClientSession(connector=connector, headers=_SEARCH_HEADERS) as session:
-        tasks = [s.search(session, query, category, limit) for s in enabled_sources]
-        all_results = await asyncio.gather(*tasks, return_exceptions=True)
-    for r in all_results:
-        if isinstance(r, list):
-            results.extend(r)
+    with _ThreadPoolExecutor(max_workers=len(enabled_sources)) as ex:
+        futures = {ex.submit(s.search_sync, query, category, limit): s for s in enabled_sources}
+        for fut in _as_completed(futures, timeout=15):
+            try:
+                r = fut.result()
+                if isinstance(r, list):
+                    results.extend(r)
+            except Exception:
+                pass
     results.sort(key=lambda x: x.get("seeders", 0), reverse=True)
-    return results[:limit * len(enabled_sources)]
+    return results
 
 
 @app.route("/api/search")
@@ -1209,9 +1221,7 @@ def api_search():
     enabled = _SEARCH_SOURCES if sources_param == "all" else [
         s for s in _SEARCH_SOURCES if s.id in sources_param.split(",")
     ]
-
-    loop = _get_search_loop()
-    results = loop.run_until_complete(_search_all(enabled, query, category, limit))
+    results = _run_search(enabled, query, category, limit)
     return jsonify({
         "query": query,
         "total": len(results),
