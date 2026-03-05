@@ -946,13 +946,15 @@ function buildSRCard(r) {
   const leech   = r.leechers ?? '?';
   const date    = r.date ? escHtml(String(r.date).substring(0,10)) : '';
   const cat     = r.category ? escHtml(r.category) : '';
-  const magnet  = r.magnet ? escHtml(r.magnet) : '';
+  // NOTE: use raw magnet (not escHtml) for onclick — escHtml breaks & in query params
+  const magnetRaw = r.magnet || '';
+  const magnet    = escHtml(magnetRaw);  // only for display/attr, NOT for onclick
 
-  const dlBtn = magnet
-    ? '<button class="btn btn-primary" style="font-size:12px;padding:5px 10px" onclick="startFromSearch(' + JSON.stringify(magnet) + ')">⬇ Baixar</button>'
+  const dlBtn = magnetRaw
+    ? '<button class="btn btn-primary" style="font-size:12px;padding:5px 10px" onclick="startFromSearch(' + JSON.stringify(magnetRaw) + ')">⬇ Baixar</button>'
     : '';
-  const magBtn = magnet
-    ? '<button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="copyMagnet(' + JSON.stringify(magnet) + ')" title="Copiar magnet">🔗</button>'
+  const magBtn = magnetRaw
+    ? '<button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="copyMagnet(' + JSON.stringify(magnetRaw) + ')" title="Copiar magnet">🔗</button>'
     : '';
 
   return `<div class="sr-card">
