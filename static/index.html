@@ -120,7 +120,37 @@
       border-radius:6px;border:1px solid var(--border);background:var(--surface3);
       color:var(--text);margin-bottom:10px; }
     #dbx-upload-progress { margin-top:12px; font-size:13px; color:var(--muted); }
-</style>
+
+    /* ── Search tab ─────────────────────────────────────────────────── */
+    #search-input-row { display:flex; gap:8px; flex-wrap:wrap; }
+    #search-input-row input[type=text] { flex:1; min-width:200px; }
+    #search-filters { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+    .source-toggle { display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;
+      background:var(--surface); border:1px solid var(--border); border-radius:6px;
+      padding:4px 8px; transition:border-color .15s, background .15s; user-select:none; }
+    .source-toggle.active { border-color:var(--accent); background:rgba(59,130,246,.12); }
+    .source-toggle input { display:none; }
+    #cat-select { background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+      color:var(--text); padding:5px 8px; font-size:13px; cursor:pointer; }
+    #search-results { margin-top:16px; display:flex; flex-direction:column; gap:8px; }
+    .sr-card { background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+      padding:12px 14px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+      transition:border-color .2s; }
+    .sr-card:hover { border-color:var(--accent); }
+    .sr-left { flex:1; min-width:0; }
+    .sr-title { font-size:13px; font-weight:500; margin-bottom:4px; overflow:hidden;
+      text-overflow:ellipsis; white-space:nowrap; }
+    .sr-meta { font-size:11px; color:var(--muted); display:flex; flex-wrap:wrap; gap:8px; }
+    .sr-seeds { color:#22c55e; font-weight:600; }
+    .sr-leech { color:#f97316; font-weight:600; }
+    .sr-source { background:var(--surface); border-radius:4px; padding:1px 6px;
+      border:1px solid var(--border); font-size:10px; }
+    .sr-actions { display:flex; gap:6px; flex-shrink:0; }
+    #search-spinner { display:none; text-align:center; padding:24px; color:var(--muted); font-size:14px; }
+    #search-empty { display:none; text-align:center; padding:24px; color:var(--muted); font-size:14px; }
+    #search-status { font-size:12px; color:var(--muted); margin-top:8px; }
+
+  </style>
 </head>
 <body>
 <header>
@@ -132,6 +162,7 @@
     <button class="nav-tab active" id="tab-btn-downloads" onclick="showTab('downloads',event)">Downloads</button>
     <button class="nav-tab" id="tab-btn-files" onclick="showTab('files',event)">Meus Arquivos</button>
     <button class="nav-tab" id="tab-btn-upload" onclick="showTab('upload',event)">Upload</button>
+    <button class="nav-tab" id="tab-btn-search" onclick="showTab('search',event)">🔍 Buscar</button>
   </div>
 </header>
 
@@ -213,6 +244,33 @@
 </div>
 
 <div id="toast-container"></div>
+
+
+<div class="tab-content" id="tab-search">
+  <div class="card">
+    <div class="card-title">🔍 Buscar Torrents</div>
+    <div id="search-input-row">
+      <input type="text" id="srch-input" placeholder="Pesquisar filmes, séries, música, anime..." onkeydown="if(event.key==='Enter')doSearch()">
+      <select id="cat-select">
+        <option value="all">Todas as categorias</option>
+        <option value="movies">Filmes</option>
+        <option value="tv">Séries / TV</option>
+        <option value="anime">Anime</option>
+        <option value="music">Música</option>
+        <option value="games">Jogos</option>
+        <option value="software">Software</option>
+      </select>
+      <button class="btn btn-primary" onclick="doSearch()">Buscar</button>
+    </div>
+    <div id="search-filters">
+      <span style="font-size:12px;color:var(--muted);margin-right:4px">Fontes:</span>
+    </div>
+    <div id="search-status"></div>
+  </div>
+  <div id="search-spinner">⏳ Buscando em todas as fontes...</div>
+  <div id="search-empty">Nenhum resultado encontrado.</div>
+  <div id="search-results"></div>
+</div>
 
 <script>
 const API = '';
@@ -820,6 +878,116 @@ async function doDropboxUpload(files) {
   if (ok > 0) toast(ok + ' arquivo(s) enviado(s) para Dropbox ✓', 'success');
   clearSelection();
 }
+
+// ── Torrent Search ────────────────────────────────────────────────────────────
+let _searchSources = [];
+
+async function initSearch() {
+  try {
+    const data = await fetch(API + '/api/search/sources').then(r => r.json());
+    _searchSources = data;
+    const filters = document.getElementById('search-filters');
+    data.forEach(s => {
+      const label = document.createElement('label');
+      label.className = 'source-toggle active';
+      label.title = s.name;
+      label.innerHTML = '<input type="checkbox" checked data-sid="' + s.id + '"> ' + escHtml(s.name);
+      label.querySelector('input').addEventListener('change', function() {
+        label.classList.toggle('active', this.checked);
+      });
+      filters.appendChild(label);
+    });
+  } catch(e) {
+    console.warn('Search sources failed:', e);
+  }
+}
+
+async function doSearch() {
+  const q = document.getElementById('srch-input').value.trim();
+  if (!q) return;
+  const category = document.getElementById('cat-select').value;
+  const checked = Array.from(document.querySelectorAll('#search-filters input:checked'))
+    .map(cb => cb.dataset.sid);
+  const sources = checked.length === _searchSources.length ? 'all' : checked.join(',');
+
+  const spinner = document.getElementById('search-spinner');
+  const empty   = document.getElementById('search-empty');
+  const results = document.getElementById('search-results');
+  const status  = document.getElementById('search-status');
+
+  spinner.style.display = 'block';
+  empty.style.display   = 'none';
+  results.innerHTML     = '';
+  status.textContent    = '';
+
+  try {
+    const params = new URLSearchParams({ q, category, sources, limit: 50 });
+    const data = await fetch(API + '/api/search?' + params).then(r => r.json());
+    spinner.style.display = 'none';
+
+    if (!data.results || data.results.length === 0) {
+      empty.style.display = 'block';
+      return;
+    }
+
+    status.textContent = data.total + ' resultado(s) de: ' + (data.sources || []).join(', ');
+    results.innerHTML = data.results.map(r => buildSRCard(r)).join('');
+  } catch(e) {
+    spinner.style.display = 'none';
+    status.textContent = 'Erro na busca: ' + e.message;
+  }
+}
+
+function buildSRCard(r) {
+  const title   = escHtml(r.title || 'Sem título');
+  const source  = escHtml(r.source || r.source_id || '');
+  const size    = r.size ? escHtml(r.size) : '?';
+  const seeds   = r.seeders  ?? '?';
+  const leech   = r.leechers ?? '?';
+  const date    = r.date ? escHtml(String(r.date).substring(0,10)) : '';
+  const cat     = r.category ? escHtml(r.category) : '';
+  const magnet  = r.magnet ? escHtml(r.magnet) : '';
+
+  const dlBtn = magnet
+    ? '<button class="btn btn-primary" style="font-size:12px;padding:5px 10px" onclick="startFromSearch(' + JSON.stringify(magnet) + ')">⬇ Baixar</button>'
+    : '';
+  const magBtn = magnet
+    ? '<button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="copyMagnet(' + JSON.stringify(magnet) + ')" title="Copiar magnet">🔗</button>'
+    : '';
+
+  return `<div class="sr-card">
+    <div class="sr-left">
+      <div class="sr-title" title="${title}">${title}</div>
+      <div class="sr-meta">
+        <span class="sr-seeds">▲ ${seeds}</span>
+        <span class="sr-leech">▼ ${leech}</span>
+        <span>📦 ${size}</span>
+        ${cat ? '<span>' + cat + '</span>' : ''}
+        ${date ? '<span>' + date + '</span>' : ''}
+        <span class="sr-source">${source}</span>
+      </div>
+    </div>
+    <div class="sr-actions">${dlBtn}${magBtn}</div>
+  </div>`;
+}
+
+function startFromSearch(magnet) {
+  showTab('downloads', null);
+  document.getElementById('url-input').value = magnet;
+  startDownload();
+}
+
+function copyMagnet(magnet) {
+  navigator.clipboard.writeText(magnet).then(() => toast('Magnet copiado!'));
+}
+
+// Init search sources when search tab is first opened
+const _origShowTab = showTab;
+showTab = function(name, e) {
+  _origShowTab(name, e);
+  if (name === 'search' && _searchSources.length === 0) initSearch();
+};
+
 </script>
 
 </body>

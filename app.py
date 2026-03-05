@@ -599,6 +599,635 @@ def dropbox_upload():
     return jsonify(results)
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# TORRENT SEARCH — agregador inline (9 fontes)
+# ════════════════════════════════════════════════════════════════════════════════
+import asyncio
+import urllib.parse
+import aiohttp
+try:
+    import nest_asyncio as _nest_asyncio
+    _nest_asyncio.apply()
+except ImportError:
+    pass
+
+from abc import ABC, abstractmethod as _abstractmethod
+from typing import List as _List, Dict as _Dict
+
+_SEARCH_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/html, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+class _TorrentSource(ABC):
+    id: str = ""
+    name: str = ""
+    categories: _List[str] = []
+
+    @_abstractmethod
+    async def search(self, session, query: str, category: str, limit: int) -> _List[_Dict]:
+        pass
+
+    def _result(self, title, magnet, size="", seeders=0, leechers=0, category="", date="", extra=None):
+        def _int(v):
+            try:
+                return int(str(v).strip().replace(",", ""))
+            except Exception:
+                return 0
+        r = {
+            "title": title, "magnet": magnet, "size": str(size).strip(),
+            "seeders": _int(seeders), "leechers": _int(leechers),
+            "source": self.name, "source_id": self.id,
+            "category": category, "date": date,
+        }
+        if extra:
+            r.update(extra)
+        return r
+
+    def _build_magnet(self, info_hash, name="", trackers=None):
+        m = f"magnet:?xt=urn:btih:{info_hash}&dn={urllib.parse.quote(name)}"
+        for tr in (trackers or []):
+            m += f"&tr={urllib.parse.quote(tr)}"
+        return m
+
+
+# ── Source: sources/yts.py ──
+
+TRACKERS = [
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.openbittorrent.com:80",
+    "udp://tracker.coppersurfer.tk:6969",
+    "udp://glotorrents.pw:6969/announce",
+    "udp://tracker.opentrackr.org:1337/announce",
+]
+
+
+class _YTSSource(_TorrentSource):
+    id = "yts"
+    name = "YTS"
+    categories = ["movies", "all"]
+    BASE_URL = "https://yts.mx/api/v2"
+
+    async def search(self, session, query, category, limit):
+        if category not in ("all", "movies"):
+            return []
+        try:
+            params = {"query_term": query, "limit": min(limit, 50), "sort_by": "seeds"}
+            async with session.get(f"{self.BASE_URL}/list_movies.json", params=params, timeout=12) as r:
+                data = await r.json(content_type=None)
+            movies = data.get("data", {}).get("movies") or []
+            results = []
+            for m in movies:
+                for t in m.get("torrents", []):
+                    magnet = self._magnet(t.get("hash", ""), m.get("title_long", "Unknown"))
+                    results.append(self._result(
+                        title=f"{m.get('title_long', 'Unknown')} [{t.get('quality','?')}] [{t.get('type','?')}]",
+                        magnet=magnet,
+                        size=t.get("size", ""),
+                        seeders=t.get("seeds", 0),
+                        leechers=t.get("peers", 0),
+                        category="movies",
+                        date=t.get("date_uploaded", ""),
+                        extra={"cover": m.get("medium_cover_image", ""), "rating": m.get("rating", "")}
+                    ))
+            return results
+        except Exception as e:
+            print(f"[YTS] error: {e}")
+            return []
+
+    def _magnet(self, hash_, title):
+        tr = "&tr=".join(TRACKERS)
+        return f"magnet:?xt=urn:btih:{hash_}&dn={urllib.parse.quote(title)}&tr={tr}"
+
+
+# ── Source: sources/nyaa.py ──
+import re
+
+
+class _NyaaSource(_TorrentSource):
+    id = "nyaa"
+    name = "Nyaa"
+    categories = ["anime", "manga", "software", "audio", "video"]
+    BASE_URL = "https://nyaa.si"
+    CATEGORY_MAP = {
+        "anime": "1_0", "manga": "3_0", "audio": "2_0",
+        "software": "6_0", "video": "4_0", "all": "0_0",
+    }
+
+    async def search(self, session, query, category, limit):
+        cat = self.CATEGORY_MAP.get(category, "0_0")
+        try:
+            params = {"f": 0, "c": cat, "q": query, "p": 1}
+            headers = {"User-Agent": "Mozilla/5.0"}
+            async with session.get(f"{self.BASE_URL}/?page=rss", params=params, headers=headers, timeout=10) as r:
+                text = await r.text()
+            return self._parse_rss(text, limit)
+        except Exception as e:
+            print(f"[Nyaa] error: {e}")
+            return []
+
+    def _parse_rss(self, text, limit):
+        items = re.findall(r"<item>(.*?)</item>", text, re.DOTALL)
+        results = []
+        for item in items[:limit]:
+            title = re.search(r"<title><!\[CDATA\[(.*?)]]></title>", item)
+            magnet = re.search(r"<nyaa:magnetUri><!\[CDATA\[(magnet:\?.*?)]]>", item)
+            seeders = re.search(r"<nyaa:seeders>(\d+)</nyaa:seeders>", item)
+            leechers = re.search(r"<nyaa:leechers>(\d+)</nyaa:leechers>", item)
+            size = re.search(r"<nyaa:size>(.*?)</nyaa:size>", item)
+            pub_date = re.search(r"<pubDate>(.*?)</pubDate>", item)
+            if title and magnet:
+                results.append(self._result(
+                    title=title.group(1),
+                    magnet=magnet.group(1),
+                    size=size.group(1) if size else "",
+                    seeders=int(seeders.group(1)) if seeders else 0,
+                    leechers=int(leechers.group(1)) if leechers else 0,
+                    category="anime",
+                    date=pub_date.group(1) if pub_date else "",
+                ))
+        return results
+
+
+# ── Source: sources/tpb.py ──
+
+TRACKERS = [
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.openbittorrent.com:80/announce",
+    "udp://tracker.coppersurfer.tk:6969/announce",
+    "udp://tracker.leechers-paradise.org:6969/announce",
+]
+
+
+class _TPBSource(_TorrentSource):
+    id = "tpb"
+    name = "The Pirate Bay"
+    categories = ["all", "movies", "tv", "music", "games", "software", "anime"]
+    # apibay.org is the official TPB JSON API
+    APIS = [
+        "https://apibay.org",
+        "https://apibay.nocensor.space",
+    ]
+    CAT_MAP = {
+        "movies": 200, "tv": 205, "music": 100,
+        "games": 400, "software": 300, "anime": 205, "all": 0
+    }
+
+    async def search(self, session, query, category, limit):
+        cat = self.CAT_MAP.get(category, 0)
+        for api in self.APIS:
+            try:
+                params = {"q": query, "cat": cat}
+                async with session.get(
+                    f"{api}/q.php", params=params, timeout=15
+                ) as r:
+                    if r.status != 200:
+                        print(f"[TPB] {api} status {r.status}")
+                        continue
+                    data = await r.json(content_type=None)
+                if not data or (len(data) == 1 and data[0].get("name") == "No results returned"):
+                    return []
+                results = []
+                for t in data[:limit]:
+                    info_hash = t.get("info_hash", "")
+                    if not info_hash or info_hash == "0" * 40:
+                        continue
+                    magnet = self._magnet(info_hash, t.get("name", ""))
+                    results.append(self._result(
+                        title=t.get("name", ""),
+                        magnet=magnet,
+                        size=t.get("size", ""),
+                        seeders=t.get("seeders", 0),
+                        leechers=t.get("leechers", 0),
+                        category=category,
+                        date=str(t.get("added", "")),
+                        extra={"imdb": t.get("imdb", "")}
+                    ))
+                return results
+            except Exception as e:
+                print(f"[TPB] {api} error: {e}")
+        return []
+
+    def _magnet(self, hash_, name):
+        dn = urllib.parse.quote(name)
+        tr = "&tr=".join(urllib.parse.quote(t) for t in TRACKERS)
+        return f"magnet:?xt=urn:btih:{hash_}&dn={dn}&tr={tr}"
+
+
+# ── Source: sources/x1337.py ──
+from bs4 import BeautifulSoup
+
+
+class _X1337Source(_TorrentSource):
+    id = "1337x"
+    name = "1337x"
+    categories = ["movies", "tv", "games", "music", "apps", "anime"]
+    MIRRORS = ["https://1337x.to", "https://1337x.st", "https://x1337x.ws"]
+    CAT_MAP = {
+        "movies": "Movies", "tv": "TV", "games": "Games",
+        "music": "Music", "apps": "Apps", "anime": "Anime",
+    }
+
+    async def search(self, session, query, category, limit):
+        cat_path = (
+            f"category-search/{urllib.parse.quote(query)}/{self.CAT_MAP[category]}/1/"
+            if category in self.CAT_MAP
+            else f"search/{urllib.parse.quote(query)}/1/"
+        )
+        for mirror in self.MIRRORS:
+            try:
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                async with session.get(f"{mirror}/{cat_path}", headers=headers, timeout=10) as r:
+                    if r.status != 200:
+                        continue
+                    html = await r.text()
+                results = await self._parse_and_fetch(session, mirror, html, limit)
+                if results:
+                    return results
+            except Exception as e:
+                print(f"[1337x] {mirror} error: {e}")
+        return []
+
+    async def _parse_and_fetch(self, session, mirror, html, limit):
+        import asyncio
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.select("table.table-list tbody tr")[:limit]
+        tasks = [self._fetch_magnet(session, mirror, row) for row in rows]
+        magnets = await asyncio.gather(*tasks, return_exceptions=True)
+        results = []
+        for row, magnet in zip(rows, magnets):
+            if isinstance(magnet, Exception) or not magnet:
+                continue
+            cols = row.find_all("td")
+            if len(cols) < 4:
+                continue
+            name = cols[0].find("a", href=lambda h: h and "/torrent/" in h)
+            seeders = cols[1].text.strip()
+            leechers = cols[2].text.strip()
+            size = cols[4].text.strip() if len(cols) > 4 else ""
+            results.append(self._result(
+                title=name.text.strip() if name else "Unknown",
+                magnet=magnet, size=size,
+                seeders=seeders, leechers=leechers, category="general",
+            ))
+        return results
+
+    async def _fetch_magnet(self, session, mirror, row):
+        link = row.find("a", href=lambda h: h and "/torrent/" in h)
+        if not link:
+            return None
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            async with session.get(f"{mirror}{link['href']}", headers=headers, timeout=8) as r:
+                html = await r.text()
+            soup = BeautifulSoup(html, "html.parser")
+            magnet = soup.find("a", href=lambda h: h and h.startswith("magnet:"))
+            return magnet["href"] if magnet else None
+        except Exception:
+            return None
+
+
+# ── Source: sources/eztv.py ──
+
+
+class _EZTVSource(_TorrentSource):
+    id = "eztv"
+    name = "EZTV"
+    categories = ["all", "tv", "shows"]
+    BASE_URL = "https://eztv.re/api"
+
+    async def search(self, session, query, category, limit):
+        try:
+            params = {"query": query, "limit": min(limit, 100), "page": 1}
+            async with session.get(f"{self.BASE_URL}/get-torrents", params=params, timeout=12) as r:
+                data = await r.json()
+            torrents = data.get("torrents") or []
+            results = []
+            for t in torrents[:limit]:
+                results.append(self._result(
+                    title=t.get("title", ""),
+                    magnet=t.get("magnet_url", ""),
+                    size=str(t.get("size_bytes", "")),
+                    seeders=t.get("seeds", 0),
+                    leechers=t.get("peers", 0),
+                    category="tv",
+                    date=str(t.get("date_released_unix", "")),
+                    extra={"imdb": t.get("imdb_id", "")}
+                ))
+            return results
+        except Exception as e:
+            print(f"[EZTV] error: {e}")
+            return []
+
+
+# ── Source: sources/torrentgalaxy.py ──
+from bs4 import BeautifulSoup
+
+
+class _TorrentGalaxySource(_TorrentSource):
+    id = "tgx"
+    name = "Torrent Galaxy"
+    categories = ["movies", "tv", "music", "games", "software", "anime", "books"]
+    MIRRORS = ["https://torrentgalaxy.to", "https://tgx.rs"]
+    CAT_MAP = {
+        "movies": "c3=1", "tv": "c5=1", "music": "c22=1",
+        "games": "c10=1", "software": "c18=1", "anime": "c28=1", "books": "c13=1",
+    }
+
+    async def search(self, session, query, category, limit):
+        cat_param = self.CAT_MAP.get(category, "")
+        q = urllib.parse.quote(query)
+        for mirror in self.MIRRORS:
+            try:
+                url = f"{mirror}/torrents.php?search={q}&lang=0&nox=2&{cat_param}"
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                async with session.get(url, headers=headers, timeout=12) as r:
+                    if r.status != 200:
+                        continue
+                    html = await r.text()
+                results = self._parse(html, limit)
+                if results:
+                    return results
+            except Exception as e:
+                print(f"[TGX] {mirror} error: {e}")
+        return []
+
+    def _parse(self, html, limit):
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.select("div.tgxtablerow")[:limit]
+        results = []
+        for row in rows:
+            try:
+                name_tag = row.select_one("div.tgxtablecell:nth-child(4) a")
+                magnet_tag = row.find("a", href=lambda h: h and h.startswith("magnet:"))
+                if not name_tag or not magnet_tag:
+                    continue
+                seeders_tag = row.select_one("span.tgxtableseeds")
+                leechers_tag = row.select_one("span.tgxtableleechers")
+                size_tag = row.select_one("span.badge-secondary")
+                results.append(self._result(
+                    title=name_tag.get_text(strip=True),
+                    magnet=magnet_tag["href"],
+                    size=size_tag.get_text(strip=True) if size_tag else "",
+                    seeders=seeders_tag.get_text(strip=True) if seeders_tag else 0,
+                    leechers=leechers_tag.get_text(strip=True) if leechers_tag else 0,
+                    category="general",
+                ))
+            except Exception:
+                continue
+        return results
+
+
+# ── Source: sources/kickass.py ──
+
+TRACKERS = [
+    "udp://tracker.coppersurfer.tk:6969/announce",
+    "udp://9.rarbg.to:2920/announce",
+    "udp://tracker.opentrackr.org:1337",
+    "udp://tracker.internetwarriors.net:1337/announce",
+]
+
+
+class _KickassSource(_TorrentSource):
+    id = "kat"
+    name = "Kickass Torrents"
+    categories = ["movies", "tv", "music", "games", "software", "anime", "books"]
+    # Uses katcr.co JSON API
+    BASE_URL = "https://katcr.co/api/v2/search"
+
+    async def search(self, session, query, category, limit):
+        try:
+            params = {
+                "phraseSearch": query,
+                "page": 1,
+            }
+            if category not in ("all", ""):
+                params["category"] = category
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            async with session.get(self.BASE_URL, params=params, headers=headers, timeout=12) as r:
+                if r.status != 200:
+                    return []
+                data = await r.json(content_type=None)
+            items = data.get("results", []) or []
+            results = []
+            for t in items[:limit]:
+                hash_ = t.get("hash", "")
+                name = t.get("title", "Unknown")
+                magnet = self._build_magnet(hash_, name) if hash_ else t.get("magnet", "")
+                if not magnet:
+                    continue
+                results.append(self._result(
+                    title=name,
+                    magnet=magnet,
+                    size=t.get("size", ""),
+                    seeders=t.get("seeders", 0),
+                    leechers=t.get("leechers", 0),
+                    category=category,
+                    date=t.get("added", ""),
+                ))
+            return results
+        except Exception as e:
+            print(f"[KAT] error: {e}")
+            return []
+
+    def _build_magnet(self, hash_, name):
+        tr = "&tr=".join(TRACKERS)
+        return f"magnet:?xt=urn:btih:{hash_}&dn={urllib.parse.quote(name)}&tr={tr}"
+
+
+# ── Source: sources/limetorrents.py ──
+from bs4 import BeautifulSoup
+
+
+class _LimeTorrentsSource(_TorrentSource):
+    id = "lime"
+    name = "Lime Torrents"
+    categories = ["movies", "tv", "music", "games", "software", "anime"]
+    MIRRORS = ["https://www.limetorrents.lol", "https://www.limetorrents.info"]
+    CAT_MAP = {
+        "movies": "movies", "tv": "tv", "music": "music",
+        "games": "games", "software": "applications", "anime": "anime",
+    }
+
+    async def search(self, session, query, category, limit):
+        cat = self.CAT_MAP.get(category, "all")
+        q = urllib.parse.quote(query)
+        for mirror in self.MIRRORS:
+            try:
+                url = f"{mirror}/search/{cat}/{q}/seeds/1/"
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                async with session.get(url, headers=headers, timeout=12) as r:
+                    if r.status != 200:
+                        continue
+                    html = await r.text()
+                results = self._parse(html, limit)
+                if results:
+                    return results
+            except Exception as e:
+                print(f"[LIME] {mirror} error: {e}")
+        return []
+
+    def _parse(self, html, limit):
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.select("table.table2 tbody tr")[:limit]
+        results = []
+        for row in rows:
+            try:
+                cols = row.find_all("td")
+                if len(cols) < 5:
+                    continue
+                name_tag = cols[0].find("a", href=lambda h: h and "/torrent/" in h)
+                magnet_tag = row.find("a", href=lambda h: h and h.startswith("magnet:"))
+                if not name_tag:
+                    continue
+                # Lime Torrents detail page needed for magnet — skip if no direct magnet
+                if not magnet_tag:
+                    continue
+                results.append(self._result(
+                    title=name_tag.get_text(strip=True),
+                    magnet=magnet_tag["href"],
+                    size=cols[2].get_text(strip=True),
+                    seeders=cols[3].get_text(strip=True),
+                    leechers=cols[4].get_text(strip=True),
+                    category="general",
+                ))
+            except Exception:
+                continue
+        return results
+
+
+# ── Source: sources/rarbg.py ──
+
+TRACKERS = [
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.openbittorrent.com:80",
+    "udp://tracker.coppersurfer.tk:6969/announce",
+]
+
+
+class _RARBGSource(_TorrentSource):
+    """
+    RARBG closed in 2023. This source queries the community-maintained
+    RARBG database mirror at rargb.to (db-search).
+    Falls back to the apibay.org API (TPB) scoped to a known RARBG-style query.
+    """
+    id = "rarbg"
+    name = "RARBG (mirror)"
+    categories = ["movies", "tv", "games", "music", "software", "anime"]
+    # Public RARBG DB search mirrors
+    MIRRORS = [
+        "https://rargb.to",
+        "https://rarbg.unblockit.onl",
+    ]
+
+    async def search(self, session, query, category, limit):
+        q = urllib.parse.quote(query)
+        for mirror in self.MIRRORS:
+            try:
+                url = f"{mirror}/search/?search={q}"
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                async with session.get(url, headers=headers, timeout=12, allow_redirects=True) as r:
+                    if r.status != 200:
+                        continue
+                    html = await r.text()
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html, "html.parser")
+                rows = soup.select("tr.table2t, tr.lista2")[:limit]
+                results = []
+                for row in rows:
+                    cols = row.find_all("td")
+                    if len(cols) < 4:
+                        continue
+                    name_el = cols[1].find("a") if len(cols) > 1 else None
+                    magnet_el = row.find("a", href=lambda h: h and h.startswith("magnet:"))
+                    if not name_el or not magnet_el:
+                        continue
+                    results.append(self._result(
+                        title=name_el.text.strip(),
+                        magnet=magnet_el["href"],
+                        size=cols[3].text.strip() if len(cols) > 3 else "",
+                        seeders=cols[4].text.strip() if len(cols) > 4 else 0,
+                        leechers=cols[5].text.strip() if len(cols) > 5 else 0,
+                        category=category,
+                    ))
+                if results:
+                    return results
+            except Exception as e:
+                print(f"[RARBG] {mirror} error: {e}")
+        return []
+
+
+
+# ── Search aggregator ──────────────────────────────────────────────────────────
+_SEARCH_SOURCES = [
+    __YTSSource(), __NyaaSource(), __EZTVSource(), __X1337Source(), __TPBSource(),
+    __RARBGSource(), __TorrentGalaxySource(), __KickassSource(), __LimeTorrentsSource(),
+]
+
+def _get_search_loop():
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError
+        return loop
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+async def _search_all(enabled_sources, query, category, limit):
+    results = []
+    connector = aiohttp.TCPConnector(ssl=False)
+    async with aiohttp.ClientSession(connector=connector, headers=_SEARCH_HEADERS) as session:
+        tasks = [s.search(session, query, category, limit) for s in enabled_sources]
+        all_results = await asyncio.gather(*tasks, return_exceptions=True)
+    for r in all_results:
+        if isinstance(r, list):
+            results.extend(r)
+    results.sort(key=lambda x: x.get("seeders", 0), reverse=True)
+    return results[:limit * len(enabled_sources)]
+
+
+@app.route("/api/search")
+def api_search():
+    query    = request.args.get("q", "").strip()
+    category = request.args.get("category", "all")
+    sources_param = request.args.get("sources", "all")
+    limit    = min(int(request.args.get("limit", 30)), 100)
+
+    if not query:
+        return jsonify({"error": "query required"}), 400
+
+    enabled = _SEARCH_SOURCES if sources_param == "all" else [
+        s for s in _SEARCH_SOURCES if s.id in sources_param.split(",")
+    ]
+
+    loop = _get_search_loop()
+    results = loop.run_until_complete(_search_all(enabled, query, category, limit))
+    return jsonify({
+        "query": query,
+        "total": len(results),
+        "sources": [s.id for s in enabled],
+        "results": results,
+    })
+
+
+@app.route("/api/search/sources")
+def api_search_sources():
+    return jsonify([
+        {"id": s.id, "name": s.name, "categories": s.categories}
+        for s in _SEARCH_SOURCES
+    ])
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
