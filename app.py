@@ -307,24 +307,58 @@ def delete_job(job_id):
 
 @app.route("/api/files", methods=["GET"])
 def list_files():
-    """List all files recursively (includes files inside torrent sub-folders)."""
-    files = []
-    for f in sorted(UPLOAD_DIR.rglob("*"),
-                    key=lambda x: x.stat().st_mtime if x.is_file() else 0,
-                    reverse=True):
-        if f.is_file():
-            st = f.stat()
-            ext = f.suffix.lower()
-            rel = str(f.relative_to(UPLOAD_DIR))
-            files.append({
-                "name": rel,
+    """List top-level files and folders.
+    - Files at root level → individual entries (type: file)
+    - Subdirectories (torrent multi-file) → single folder entry (type: folder)
+      with children list and main_file (largest file) for quick play/download.
+    """
+    entries = []
+    for item in sorted(UPLOAD_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        if item.is_file():
+            st = item.stat()
+            ext = item.suffix.lower()
+            entries.append({
+                "name": item.name,
+                "type": "file",
                 "size": st.st_size,
                 "size_human": human_size(st.st_size),
                 "modified": st.st_mtime,
                 "is_video": ext in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"},
                 "is_audio": ext in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac"},
             })
-    return jsonify(files)
+        elif item.is_dir():
+            all_files = sorted(
+                [p for p in item.rglob("*") if p.is_file()],
+                key=lambda p: p.stat().st_size, reverse=True,
+            )
+            if not all_files:
+                continue
+            total_size = sum(p.stat().st_size for p in all_files)
+            main_file = all_files[0]
+            main_ext = main_file.suffix.lower()
+            children = [
+                {
+                    "name": str(p.relative_to(UPLOAD_DIR)),
+                    "size": p.stat().st_size,
+                    "size_human": human_size(p.stat().st_size),
+                    "is_video": p.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"},
+                    "is_audio": p.suffix.lower() in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac"},
+                }
+                for p in all_files
+            ]
+            entries.append({
+                "name": item.name,
+                "type": "folder",
+                "size": total_size,
+                "size_human": human_size(total_size),
+                "modified": item.stat().st_mtime,
+                "file_count": len(all_files),
+                "main_file": str(main_file.relative_to(UPLOAD_DIR)),
+                "is_video": main_ext in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"},
+                "is_audio": main_ext in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac"},
+                "children": children,
+            })
+    return jsonify(entries)
 
 
 def _mime(suffix):

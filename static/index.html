@@ -371,27 +371,60 @@ function renderFilesGrid(files) {
   if (!files.length) { grid.style.display = 'none'; empty.style.display = 'block'; return; }
   grid.style.display = 'grid'; empty.style.display = 'none';
   grid.innerHTML = files.map(f => {
-    const name    = fileBasename(f.name);
-    const folder  = fileDirname(f.name);
+    if (f.type === 'folder') {
+      // ── Folder card (torrent multi-arquivo) ──────────────────────────────
+      const playFile = f.main_file;
+      const canPlay  = f.is_video || f.is_audio;
+      const thumb = canPlay
+        ? `<div class="file-thumb" onclick="openPlayer('${playFile}')">
+             ${f.is_video ? '🎬' : '🎵'}<div class="play-btn">▶</div>
+           </div>`
+        : `<div class="file-thumb" style="cursor:default">📁</div>`;
+      // Children list (collapsed by default, max 5 shown)
+      const childRows = f.children.slice(0, 5).map(c =>
+        `<div style="display:flex;justify-content:space-between;align-items:center;gap:4px;padding:2px 0;font-size:11px;color:var(--text)">
+           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${c.name}">${fileBasename(c.name)}</span>
+           <span style="color:var(--muted);flex-shrink:0">${c.size_human}</span>
+           <a href="${fileUrl(c.name)}?dl=1" class="btn-sm" download="${fileBasename(c.name)}" style="flex-shrink:0">⬇️</a>
+           ${c.is_video || c.is_audio ? `<button class="btn-green" onclick="openPlayer('${c.name}')" style="flex-shrink:0;padding:1px 6px;font-size:11px">▶</button>` : ''}
+         </div>`
+      ).join('');
+      const moreLabel = f.children.length > 5
+        ? `<div style="font-size:10px;color:var(--muted);text-align:right;margin-top:2px">+${f.children.length - 5} mais arquivos</div>`
+        : '';
+      return `<div class="file-card" style="grid-column:1/-1">
+        <div style="display:flex;gap:10px">
+          ${thumb}
+          <div class="file-info" style="flex:1;min-width:0">
+            <div class="file-info-name" title="${f.name}" style="font-size:13px;font-weight:600">📁 ${f.name}</div>
+            <div class="file-info-size">${f.file_count} arquivos · ${f.size_human}</div>
+            <div style="margin-top:6px">${childRows}${moreLabel}</div>
+            <div class="file-actions" style="margin-top:6px">
+              ${canPlay ? `<button class="btn-green" onclick="openPlayer('${playFile}')">&#x25B6; Play</button>` : ''}
+              <button class="btn btn-danger" onclick="deleteFile('${f.name}')">&#x1F5D1; Excluir pasta</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ── File card ────────────────────────────────────────────────────────────
+    const name    = f.name;
     const url     = fileUrl(f.name);
     const canPlay = f.is_video || f.is_audio;
     const thumb = f.is_video
-      ? `<div class="file-thumb" onclick="openPlayer('${f.name}')">🎬<div class="play-btn">▶</div></div>`
+      ? `<div class="file-thumb" onclick="openPlayer('${name}')">🎬<div class="play-btn">▶</div></div>`
       : f.is_audio
-      ? `<div class="file-thumb" onclick="openPlayer('${f.name}')">🎵<div class="play-btn">▶</div></div>`
+      ? `<div class="file-thumb" onclick="openPlayer('${name}')">🎵<div class="play-btn">▶</div></div>`
       : `<div class="file-thumb" style="cursor:default">${fileIcon(name)}</div>`;
-    const folderBadge = folder
-      ? `<div style="font-size:10px;color:var(--muted);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${folder}">📁 ${folder}</div>`
-      : '';
     return `<div class="file-card">${thumb}
       <div class="file-info">
-        ${folderBadge}
-        <div class="file-info-name" title="${f.name}">${name}</div>
+        <div class="file-info-name" title="${name}">${name}</div>
         <div class="file-info-size">${f.size_human}</div>
         <div class="file-actions">
-          ${canPlay ? `<button class="btn-green" onclick="openPlayer('${f.name}')">&#x25B6; Play</button>` : ''}
+          ${canPlay ? `<button class="btn-green" onclick="openPlayer('${name}')">&#x25B6; Play</button>` : ''}
           <a href="${url}?dl=1" class="btn-sm" download="${name}">⬇️</a>
-          <button class="btn btn-danger" onclick="deleteFile('${f.name}')">&#x1F5D1;</button>
+          <button class="btn btn-danger" onclick="deleteFile('${name}')">&#x1F5D1;</button>
         </div>
       </div></div>`;
   }).join('');
