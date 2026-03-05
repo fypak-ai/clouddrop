@@ -483,7 +483,7 @@ def transcode_file(filename):
         finally:
             proc.kill()
     return Response(generate(), mimetype="video/webm",
-                    headers={"Content-Disposition": f"inline; filename="{path.stem}.webm""})
+                    headers={"Content-Disposition": f'inline; filename="{path.stem}.webm"'})
 
 
 # ── Dropbox integration ──────────────────────────────────────────────────────
