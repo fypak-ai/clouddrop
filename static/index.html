@@ -31,34 +31,34 @@
     .btn:disabled { opacity: .5; cursor: not-allowed; }
     .btn-ghost { background: var(--surface2); color: var(--text); }
     .btn-ghost:hover { background: var(--border); }
-    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 5px 10px; font-size: 12px; }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 5px 10px; font-size: 12px; border-radius: 6px; cursor: pointer; }
     .btn-danger:hover { background: rgba(239,68,68,.1); }
-    .btn-sm { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+    .btn-sm { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; text-decoration: none; display: inline-block; }
     .btn-green { background: #166534; color: #86efac; border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
     .btn-green:hover { background: #14532d; }
-    .magnet-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(245,158,11,.15); color: var(--warning); border: 1px solid rgba(245,158,11,.3); border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 600; }
-    .torrent-info { font-size: 11px; color: #60a5fa; margin-top: 4px; }
     .dropzone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px; text-align: center; cursor: pointer; transition: all .2s; }
     .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: var(--accent-light); }
     .dropzone p { color: var(--muted); font-size: 14px; }
     .dropzone span { color: var(--accent); font-weight: 600; }
     #file-input { display: none; }
+    /* --- Job cards --- */
     .jobs-list { display: flex; flex-direction: column; gap: 12px; }
     .job-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
     .job-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 10px; }
     .job-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .job-url { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 5px; }
+    .job-url  { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 5px; }
     .job-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; margin-top: 4px; }
     .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-    .badge-pending { background: rgba(107,114,128,.2); color: #9ca3af; }
-    .badge-downloading { background: rgba(37,99,235,.2); color: #60a5fa; }
-    .badge-completed { background: rgba(34,197,94,.15); color: var(--success); }
-    .badge-failed { background: rgba(239,68,68,.15); color: var(--danger); }
-    .badge-torrent { background: rgba(245,158,11,.15); color: var(--warning); }
-    .progress-bar { height: 5px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
-    .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s; }
-    .progress-fill.torrent { background: linear-gradient(90deg, #f59e0b, #2563eb); }
-    .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+    .badge-pending    { background: rgba(107,114,128,.2); color: #9ca3af; }
+    .badge-downloading{ background: rgba(37,99,235,.2);  color: #60a5fa; }
+    .badge-torrent    { background: rgba(245,158,11,.15); color: var(--warning); }
+    .badge-completed  { background: rgba(34,197,94,.15);  color: var(--success); }
+    .badge-failed     { background: rgba(239,68,68,.15);  color: var(--danger); }
+    .progress-bar  { height: 5px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .5s linear; }
+    .progress-fill.torrent { background: linear-gradient(90deg,#f59e0b,#2563eb); }
+    /* --- Files grid --- */
+    .files-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap: 14px; }
     .file-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: border-color .2s; }
     .file-card:hover { border-color: var(--accent); }
     .file-thumb { width: 100%; aspect-ratio: 16/9; background: #0d1117; display: flex; align-items: center; justify-content: center; font-size: 40px; cursor: pointer; position: relative; }
@@ -68,35 +68,36 @@
     .file-info-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
     .file-info-size { font-size: 11px; color: var(--muted); }
     .file-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    /* --- Player modal --- */
     #player-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.88); z-index: 1000; align-items: center; justify-content: center; }
     #player-modal.open { display: flex; }
-    .player-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; width: min(92vw, 860px); max-height: 92vh; display: flex; flex-direction: column; }
+    .player-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; width: min(92vw,860px); max-height: 92vh; display: flex; flex-direction: column; }
     .player-header { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
     .player-title { font-size: 14px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; }
     .player-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
     .player-close:hover { color: var(--text); }
     #player-video { width: 100%; max-height: 68vh; background: #000; display: block; }
     #player-audio-wrap { padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-    #player-audio-icon { font-size: 56px; }
     #player-audio { width: 100%; }
     .player-footer { padding: 10px 16px; display: flex; gap: 8px; border-top: 1px solid var(--border); }
+    /* --- Misc --- */
     .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
     #toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
     .toast { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 14px; min-width: 240px; animation: slideIn .2s ease; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
     .toast.success { border-left: 3px solid var(--success); }
-    .toast.error { border-left: 3px solid var(--danger); }
-    @keyframes slideIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-    .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .toast.error   { border-left: 3px solid var(--danger); }
+    @keyframes slideIn { from{transform:translateX(40px);opacity:0} to{transform:translateX(0);opacity:1} }
+    .spinner { display:inline-block;width:10px;height:10px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
     .stats-row { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
     .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; flex: 1; min-width: 110px; }
     .stat-value { font-size: 22px; font-weight: 700; }
     .stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
     .lt-status { font-size: 12px; display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); }
     .lt-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .lt-dot.ok { background: var(--success); }
+    .lt-dot.ok   { background: var(--success); }
     .lt-dot.warn { background: var(--warning); }
   </style>
 </head>
@@ -112,6 +113,7 @@
     <button class="nav-tab" onclick="showTab('upload',event)">Upload</button>
   </div>
 </header>
+
 <div class="container">
   <div class="stats-row">
     <div class="stat-card"><div class="stat-value" id="stat-total">0</div><div class="stat-label">Total de Downloads</div></div>
@@ -119,6 +121,8 @@
     <div class="stat-card"><div class="stat-value" id="stat-files">0</div><div class="stat-label">Arquivos</div></div>
     <div class="stat-card"><div class="stat-value" id="stat-size">0 B</div><div class="stat-label">Tamanho Total</div></div>
   </div>
+
+  <!-- Downloads tab -->
   <div class="tab-content active" id="tab-downloads">
     <div class="card">
       <div class="card-title">⬇️ Download Remoto</div>
@@ -137,9 +141,13 @@
         <span>📋 Fila de Downloads</span>
         <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="clearCompleted()">Limpar concluídos</button>
       </div>
-      <div class="jobs-list" id="jobs-list"><div class="empty"><p>Nenhum download ainda. Cole uma URL ou magnet acima.</p></div></div>
+      <div class="jobs-list" id="jobs-list">
+        <div class="empty" id="jobs-empty"><p>Nenhum download ainda. Cole uma URL ou magnet acima.</p></div>
+      </div>
     </div>
   </div>
+
+  <!-- Files tab -->
   <div class="tab-content" id="tab-files">
     <div class="card">
       <div class="card-title" style="justify-content:space-between">
@@ -150,6 +158,8 @@
       <div class="files-grid" id="files-grid" style="display:none"></div>
     </div>
   </div>
+
+  <!-- Upload tab -->
   <div class="tab-content" id="tab-upload">
     <div class="card">
       <div class="card-title">⬆️ Upload Local</div>
@@ -165,6 +175,8 @@
     </div>
   </div>
 </div>
+
+<!-- Player modal -->
 <div id="player-modal">
   <div class="player-box">
     <div class="player-header">
@@ -173,7 +185,7 @@
     </div>
     <div id="player-video-wrap"><video id="player-video" controls autoplay playsinline></video></div>
     <div id="player-audio-wrap" style="display:none">
-      <div id="player-audio-icon">🎵</div>
+      <div style="font-size:56px" id="player-audio-icon">🎵</div>
       <audio id="player-audio" controls autoplay style="width:100%"></audio>
     </div>
     <div class="player-footer">
@@ -182,34 +194,379 @@
     </div>
   </div>
 </div>
+
 <div id="toast-container"></div>
+
 <script>
-const API='';
-let jobsData=[];
-function showTab(name,e){document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');if(e)e.target.classList.add('active');if(name==='files')loadFiles();}
-function toast(msg,type='info'){const el=document.createElement('div');el.className='toast '+type;el.textContent=msg;document.getElementById('toast-container').appendChild(el);setTimeout(()=>el.remove(),3500);}
-function fileIcon(n){const e=n.split('.').pop().toLowerCase();return({mp4:'🎬',mkv:'🎬',webm:'🎬',avi:'🎬',mov:'🎬',m4v:'🎬',mp3:'🎵',flac:'🎵',wav:'🎵',ogg:'🎵',m4a:'🎵',aac:'🎵',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',pdf:'📄',zip:'🗜️',rar:'🗜️',torrent:'🌊'}[e]||'📁');}
-function isVideo(n){return /\.(mp4|mkv|webm|avi|mov|m4v)$/i.test(n);}
-function isAudio(n){return /\.(mp3|flac|wav|ogg|m4a|aac)$/i.test(n);}
-function isMagnet(url){return url.trim().toLowerCase().startsWith('magnet:');}
-async function checkLtStatus(){try{const res=await fetch(API+'/api/status');const d=await res.json();const bar=document.getElementById('lt-status-bar');const dot=document.getElementById('lt-dot');const txt=document.getElementById('lt-text');bar.style.display='flex';if(d.libtorrent){dot.className='lt-dot ok';txt.textContent='libtorrent '+d.libtorrent_version+' — torrents e magnets habilitados ✓';}else{dot.className='lt-dot warn';txt.textContent='libtorrent não instalado — magnets não funcionarão. Instale: pip install libtorrent';}}catch{}}
-async function startDownload(){const url=document.getElementById('url-input').value.trim();const fn=document.getElementById('fname-input').value.trim();if(!url){toast('Cole uma URL ou magnet link','error');return;}const btn=document.getElementById('dl-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Iniciando…';try{const res=await fetch(API+'/api/remote-download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,filename:fn})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Falhou');document.getElementById('url-input').value='';document.getElementById('fname-input').value='';toast(data.type==='torrent'?'Torrent adicionado à fila!':'Download iniciado!','success');}catch(e){toast('Erro: '+e.message,'error');}finally{btn.disabled=false;btn.textContent='Download';}}
-document.addEventListener('DOMContentLoaded',()=>{document.getElementById('url-input').addEventListener('keydown',e=>{if(e.key==='Enter')startDownload();});checkLtStatus();});
-async function loadJobs(){try{const res=await fetch(API+'/api/jobs');jobsData=await res.json();renderJobs();updateStats();}catch{}}
-function renderJobs(){const c=document.getElementById('jobs-list');if(!jobsData.length){c.innerHTML='<div class="empty"><p>Nenhum download ainda.</p></div>';return;}c.innerHTML=jobsData.map(job=>{const name=job.filename||(isMagnet(job.url)?'Torrent — aguardando metadados…':(job.url.split('/').pop().split('?')[0]||job.url));const isTorrent=job.type==='torrent';const bc={pending:'badge-pending',downloading:isTorrent?'badge-torrent':'badge-downloading',completed:'badge-completed',failed:'badge-failed'}[job.status]||'badge-pending';const sl={pending:'Pendente',downloading:isTorrent?'🌊 Torrent':'Baixando',completed:'Concluído',failed:'Falhou'}[job.status]||job.status;const pFill=isTorrent?'progress-fill torrent':'progress-fill';const pb=(job.status==='downloading')?`<div class="progress-bar"><div class="${pFill}" style="width:${job.progress||0}%"></div></div>`:'';const dlBtn=job.status==='completed'&&job.filename?`<a href="/api/files/${encodeURIComponent(job.filename)}?dl=1" class="btn-sm" download>⬇️ Baixar</a>`:'';const playBtn=job.status==='completed'&&job.filename&&(isVideo(job.filename)||isAudio(job.filename))?`<button class="btn-green" onclick="openPlayer('${job.filename}')">&#x25B6; Reproduzir</button>`:'';const torrentMeta=isTorrent?`<span class="magnet-badge">🌊 Magnet</span>${job.speed?`<span>${job.speed}</span>`:''}${job.peers!=null?`<span>${job.peers} peers</span>`:''}${job.info?`<div class="torrent-info">${job.info}</div>`:''}`:'';return`<div class="job-item"><div class="job-header"><span class="job-name">${fileIcon(name)} ${name}</span><div style="display:flex;gap:6px;align-items:center">${dlBtn} ${playBtn}<button class="btn btn-danger" onclick="deleteJob('${job.id}')">&#x2715;</button></div></div><div class="job-url">${isMagnet(job.url)?'🌊 '+job.url.slice(0,80)+'...':job.url}</div><div class="job-meta"><span class="badge ${bc}">${sl}</span>${job.size_human&&job.size_human!=='—'?`<span>${job.size_human}</span>`:''}${job.status==='downloading'?`<span>${job.progress||0}%</span>`:''}${job.error?`<span style="color:var(--danger)">${job.error}</span>`:''}${torrentMeta}</div>${pb}</div>`;}).join('');}
-async function deleteJob(id){await fetch(API+'/api/jobs/'+id,{method:'DELETE'});loadJobs();}
-async function clearCompleted(){await Promise.all(jobsData.filter(j=>j.status==='completed'||j.status==='failed').map(j=>fetch(API+'/api/jobs/'+j.id,{method:'DELETE'})));loadJobs();}
-async function loadFiles(){try{const res=await fetch(API+'/api/files');const files=await res.json();const grid=document.getElementById('files-grid');const empty=document.getElementById('files-empty');if(!files.length){grid.style.display='none';empty.style.display='block';return;}grid.style.display='grid';empty.style.display='none';grid.innerHTML=files.map(f=>{const canPlay=f.is_video||f.is_audio;const thumb=f.is_video?`<div class="file-thumb" onclick="openPlayer('${f.name}')">&#127916;<div class="play-btn">&#9654;</div></div>`:f.is_audio?`<div class="file-thumb" onclick="openPlayer('${f.name}')">&#127925;<div class="play-btn">&#9654;</div></div>`:`<div class="file-thumb" style="cursor:default;font-size:48px">${fileIcon(f.name)}</div>`;return`<div class="file-card">${thumb}<div class="file-info"><div class="file-info-name" title="${f.name}">${f.name}</div><div class="file-info-size">${f.size_human}</div><div class="file-actions">${canPlay?`<button class="btn-green" onclick="openPlayer('${f.name}')">▶ Play</button>`:''}<a href="/api/files/${encodeURIComponent(f.name)}?dl=1" class="btn-sm" download>⬇️</a><button class="btn btn-danger" onclick="deleteFile('${f.name}')">&#128465;</button></div></div></div>`;}).join('');}catch{}}
-async function deleteFile(name){if(!confirm(`Excluir "${name}"?`))return;await fetch(API+'/api/files/'+encodeURIComponent(name),{method:'DELETE'});loadFiles();toast('Arquivo excluído','success');}
-function openPlayer(filename){const url=API+'/api/files/'+encodeURIComponent(filename);const modal=document.getElementById('player-modal');const vid=document.getElementById('player-video');const aud=document.getElementById('player-audio');const vidWrap=document.getElementById('player-video-wrap');const audWrap=document.getElementById('player-audio-wrap');document.getElementById('player-title').textContent=filename;document.getElementById('player-dl-link').href=url+'?dl=1';document.getElementById('player-dl-link').download=filename;if(isVideo(filename)){vidWrap.style.display='block';audWrap.style.display='none';vid.src=url;vid.load();}else if(isAudio(filename)){vidWrap.style.display='none';audWrap.style.display='flex';aud.src=url;aud.load();}modal.classList.add('open');document.body.style.overflow='hidden';}
-function closePlayer(){const modal=document.getElementById('player-modal');modal.classList.remove('open');document.getElementById('player-video').pause();document.getElementById('player-video').src='';document.getElementById('player-audio').pause();document.getElementById('player-audio').src='';document.body.style.overflow='';}
-document.getElementById('player-modal').addEventListener('click',function(e){if(e.target===this)closePlayer();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closePlayer();});
-async function uploadFiles(files){if(!files.length)return;const form=new FormData();for(const f of files)form.append('file',f);const prog=document.getElementById('upload-progress');const fill=document.getElementById('upload-fill');const status=document.getElementById('upload-status');prog.style.display='block';fill.style.width='30%';status.textContent=`Enviando ${files.length} arquivo(s)…`;try{const res=await fetch(API+'/api/upload',{method:'POST',body:form});const data=await res.json();fill.style.width='100%';status.textContent=`✓ ${data.uploaded.length} arquivo(s) enviado(s)`;toast(`${data.uploaded.length} arquivo(s) enviado(s)`,'success');setTimeout(()=>{prog.style.display='none';fill.style.width='0%';},2000);}catch(e){status.textContent='Erro: '+e.message;toast('Falha no upload','error');}}
-const dz=document.getElementById('dropzone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');uploadFiles(e.dataTransfer.files);});
-async function updateStats(){document.getElementById('stat-total').textContent=jobsData.length;document.getElementById('stat-active').textContent=jobsData.filter(j=>j.status==='downloading'||j.status==='pending').length;try{const res=await fetch(API+'/api/files');const files=await res.json();document.getElementById('stat-files').textContent=files.length;const tb=files.reduce((s,f)=>s+f.size,0);document.getElementById('stat-size').textContent=humanSize(tb);}catch{}}
-function humanSize(b){const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<u.length-1){b/=1024;i++;}return b.toFixed(1)+' '+u[i];}
-loadJobs();setInterval(loadJobs,2000);
+const API = '';
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function showTab(name, e) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (e) e.target.classList.add('active');
+  if (name === 'files') loadFiles();
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function fileIcon(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  return ({mp4:'🎬',mkv:'🎬',webm:'🎬',avi:'🎬',mov:'🎬',m4v:'🎬',
+           mp3:'🎵',flac:'🎵',wav:'🎵',ogg:'🎵',m4a:'🎵',aac:'🎵',
+           jpg:'🖼️',jpeg:'🖼️',png:'🖼️',
+           pdf:'📄',zip:'🗜️',rar:'🗜️',torrent:'🌊'}[ext] || '📁');
+}
+function isVideo(n){ return /\.(mp4|mkv|webm|avi|mov|m4v)$/i.test(n); }
+function isAudio(n){ return /\.(mp3|flac|wav|ogg|m4a|aac)$/i.test(n); }
+function isMagnet(u){ return u.trim().toLowerCase().startsWith('magnet:'); }
+function humanSize(b){
+  const u=['B','KB','MB','GB','TB']; let i=0;
+  while(b>=1024&&i<u.length-1){b/=1024;i++;}
+  return b.toFixed(1)+' '+u[i];
+}
+function setText(id, val){ const el=document.getElementById(id); if(el&&el.textContent!==val) el.textContent=val; }
+function setWidth(el, pct){ const v=pct+'%'; if(el.style.width!==v) el.style.width=v; }
+
+// ─── libtorrent status (once) ─────────────────────────────────────────────────
+async function checkLtStatus(){
+  try{
+    const d = await fetch(API+'/api/status').then(r=>r.json());
+    const bar=document.getElementById('lt-status-bar');
+    const dot=document.getElementById('lt-dot');
+    const txt=document.getElementById('lt-text');
+    bar.style.display='flex';
+    if(d.libtorrent){
+      dot.className='lt-dot ok';
+      txt.textContent='libtorrent '+d.libtorrent_version+' — torrents e magnets habilitados ✓';
+    } else {
+      dot.className='lt-dot warn';
+      txt.textContent='libtorrent não instalado — magnets não funcionarão';
+    }
+  }catch{}
+}
+
+// ─── Remote Download ──────────────────────────────────────────────────────────
+async function startDownload(){
+  const url  = document.getElementById('url-input').value.trim();
+  const fn   = document.getElementById('fname-input').value.trim();
+  if(!url){ toast('Cole uma URL ou magnet link','error'); return; }
+  const btn  = document.getElementById('dl-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Iniciando…';
+  try{
+    const res  = await fetch(API+'/api/remote-download',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({url,filename:fn}),
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error||'Falhou');
+    document.getElementById('url-input').value  = '';
+    document.getElementById('fname-input').value = '';
+    toast(data.type==='torrent'?'Torrent adicionado à fila!':'Download iniciado!','success');
+  }catch(e){ toast('Erro: '+e.message,'error'); }
+  finally{ btn.disabled=false; btn.textContent='Download'; }
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('url-input').addEventListener('keydown',e=>{ if(e.key==='Enter') startDownload(); });
+  checkLtStatus();
+});
+
+// ─── Jobs: stable in-place DOM reconciliation ────────────────────────────────
+let jobsData = [];
+
+async function loadJobs(){
+  try{
+    const res  = await fetch(API+'/api/jobs');
+    jobsData   = await res.json();
+    reconcileJobs(jobsData);
+    updateStats();
+  }catch{}
+}
+
+const BADGE_CLASS = {
+  pending:'badge-pending', downloading:'badge-downloading',
+  torrent_dl:'badge-torrent', completed:'badge-completed', failed:'badge-failed',
+};
+const STATUS_LABEL = {
+  pending:'Pendente', downloading:'Baixando', torrent_dl:'🌊 Torrent',
+  completed:'Concluído', failed:'Falhou',
+};
+
+function jobStatusKey(job){
+  if(job.status==='downloading'&&job.type==='torrent') return 'torrent_dl';
+  return job.status;
+}
+
+/**
+ * Reconcile the jobs list DOM without full rewrite.
+ * Strategy:
+ *   1. Build a map of existing DOM nodes keyed by job id.
+ *   2. Iterate new data: update existing node or create new one.
+ *   3. Append/move nodes to match order.
+ *   4. Remove nodes no longer in data.
+ */
+function reconcileJobs(jobs){
+  const container = document.getElementById('jobs-list');
+  const emptyEl   = document.getElementById('jobs-empty');
+
+  if(!jobs.length){
+    // remove all job cards, show placeholder
+    container.querySelectorAll('.job-item').forEach(n=>n.remove());
+    if(emptyEl) emptyEl.style.display='';
+    return;
+  }
+  if(emptyEl) emptyEl.style.display='none';
+
+  // map id → existing DOM node
+  const existing = {};
+  container.querySelectorAll('.job-item[data-id]').forEach(n=>{ existing[n.dataset.id]=n; });
+
+  jobs.forEach((job,idx)=>{
+    let node = existing[job.id];
+    if(!node){
+      node = createJobNode(job);
+    } else {
+      updateJobNode(node, job);
+    }
+    // ensure correct order in DOM
+    const children = container.querySelectorAll('.job-item[data-id]');
+    const current  = children[idx];
+    if(current !== node){
+      // insert before current sibling (or append)
+      if(current) container.insertBefore(node, current);
+      else        container.appendChild(node);
+    }
+  });
+
+  // remove stale nodes
+  const newIds = new Set(jobs.map(j=>j.id));
+  container.querySelectorAll('.job-item[data-id]').forEach(n=>{
+    if(!newIds.has(n.dataset.id)) n.remove();
+  });
+}
+
+function displayName(job){
+  if(job.filename) return job.filename;
+  if(isMagnet(job.url)) return 'Torrent — aguardando metadados…';
+  return job.url.split('/').pop().split('?')[0] || job.url;
+}
+
+function createJobNode(job){
+  const div = document.createElement('div');
+  div.className = 'job-item';
+  div.dataset.id = job.id;
+  div.innerHTML = `
+    <div class="job-header">
+      <span class="job-name" data-role="name"></span>
+      <div class="job-btns" data-role="btns" style="display:flex;gap:6px;align-items:center"></div>
+    </div>
+    <div class="job-url"  data-role="url"></div>
+    <div class="job-meta" data-role="meta"></div>
+    <div class="progress-bar" data-role="pb" style="display:none">
+      <div class="progress-fill" data-role="fill" style="width:0%"></div>
+    </div>`;
+  updateJobNode(div, job);
+  return div;
+}
+
+function updateJobNode(node, job){
+  const sk   = jobStatusKey(job);
+  const name = displayName(job);
+
+  // name
+  const nameEl = node.querySelector('[data-role=name]');
+  const nameVal = fileIcon(name)+' '+name;
+  if(nameEl.textContent !== nameVal) nameEl.textContent = nameVal;
+
+  // url
+  const urlEl  = node.querySelector('[data-role=url]');
+  const urlVal = isMagnet(job.url) ? '🌊 '+job.url.slice(0,80)+(job.url.length>80?'…':'') : job.url;
+  if(urlEl.textContent !== urlVal) urlEl.textContent = urlVal;
+
+  // meta
+  const metaEl = node.querySelector('[data-role=meta]');
+  const bc     = BADGE_CLASS[sk] || 'badge-pending';
+  const label  = STATUS_LABEL[sk] || job.status;
+  let metaHTML = `<span class="badge ${bc}">${label}</span>`;
+  if(job.size_human && job.size_human!=='—') metaHTML += `<span>${job.size_human}</span>`;
+  if(job.status==='downloading') metaHTML += `<span>${job.progress||0}%</span>`;
+  if(job.type==='torrent'){
+    if(job.speed)  metaHTML += `<span>${job.speed}</span>`;
+    if(job.peers!=null) metaHTML += `<span>${job.peers} peers</span>`;
+    if(job.info)   metaHTML += `<span style="color:#60a5fa;font-size:11px">${job.info}</span>`;
+  }
+  if(job.error) metaHTML += `<span style="color:var(--danger)">${job.error}</span>`;
+  // only update if changed (avoids layout thrash)
+  if(metaEl.innerHTML !== metaHTML) metaEl.innerHTML = metaHTML;
+
+  // progress bar
+  const pb   = node.querySelector('[data-role=pb]');
+  const fill = node.querySelector('[data-role=fill]');
+  const showPb = job.status==='downloading';
+  pb.style.display = showPb ? '' : 'none';
+  if(showPb){
+    const pct = (job.progress||0)+'%';
+    if(fill.style.width !== pct) fill.style.width = pct;
+    const isTorrent = job.type==='torrent';
+    fill.className = 'progress-fill'+(isTorrent?' torrent':'');
+  }
+
+  // buttons
+  const btns    = node.querySelector('[data-role=btns]');
+  const canPlay = job.status==='completed' && job.filename && (isVideo(job.filename)||isAudio(job.filename));
+  const canDl   = job.status==='completed' && job.filename;
+  // only regenerate buttons on status change (stored as data attr)
+  const prevStatus = node.dataset.status || '';
+  if(prevStatus !== job.status || node.dataset.filename !== (job.filename||'')){
+    node.dataset.status   = job.status;
+    node.dataset.filename = job.filename || '';
+    btns.innerHTML = '';
+    if(canDl){
+      const a = document.createElement('a');
+      a.href = '/api/files/'+encodeURIComponent(job.filename)+'?dl=1';
+      a.className = 'btn-sm'; a.download = job.filename;
+      a.textContent = '⬇️ Baixar';
+      btns.appendChild(a);
+    }
+    if(canPlay){
+      const b = document.createElement('button');
+      b.className = 'btn-green';
+      b.textContent = '▶ Reproduzir';
+      b.onclick = () => openPlayer(job.filename);
+      btns.appendChild(b);
+    }
+    const del = document.createElement('button');
+    del.className = 'btn btn-danger';
+    del.textContent = '✕';
+    del.onclick = () => deleteJob(job.id);
+    btns.appendChild(del);
+  }
+}
+
+async function deleteJob(id){
+  await fetch(API+'/api/jobs/'+id,{method:'DELETE'});
+  loadJobs();
+}
+async function clearCompleted(){
+  await Promise.all(
+    jobsData.filter(j=>j.status==='completed'||j.status==='failed')
+            .map(j=>fetch(API+'/api/jobs/'+j.id,{method:'DELETE'}))
+  );
+  loadJobs();
+}
+
+// ─── Files ────────────────────────────────────────────────────────────────────
+async function loadFiles(){
+  try{
+    const files = await fetch(API+'/api/files').then(r=>r.json());
+    const grid  = document.getElementById('files-grid');
+    const empty = document.getElementById('files-empty');
+    if(!files.length){ grid.style.display='none'; empty.style.display='block'; return; }
+    grid.style.display='grid'; empty.style.display='none';
+    // full rebuild acceptable here (user-triggered, not auto-polled)
+    grid.innerHTML = files.map(f=>{
+      const canPlay=f.is_video||f.is_audio;
+      const thumb=f.is_video
+        ?`<div class="file-thumb" onclick="openPlayer('${f.name}')">🎬<div class="play-btn">▶</div></div>`
+        :f.is_audio
+        ?`<div class="file-thumb" onclick="openPlayer('${f.name}')">🎵<div class="play-btn">▶</div></div>`
+        :`<div class="file-thumb" style="cursor:default">${fileIcon(f.name)}</div>`;
+      return `<div class="file-card">${thumb}
+        <div class="file-info">
+          <div class="file-info-name" title="${f.name}">${f.name}</div>
+          <div class="file-info-size">${f.size_human}</div>
+          <div class="file-actions">
+            ${canPlay?`<button class="btn-green" onclick="openPlayer('${f.name}')">&#x25B6; Play</button>`:''}
+            <a href="/api/files/${encodeURIComponent(f.name)}?dl=1" class="btn-sm" download>⬇️</a>
+            <button class="btn btn-danger" onclick="deleteFile('${f.name}')">🗑️</button>
+          </div>
+        </div></div>`;
+    }).join('');
+  }catch{}
+}
+async function deleteFile(name){
+  if(!confirm(`Excluir "${name}"?`)) return;
+  await fetch(API+'/api/files/'+encodeURIComponent(name),{method:'DELETE'});
+  loadFiles();
+  toast('Arquivo excluído','success');
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+async function updateStats(){
+  setText('stat-total',  String(jobsData.length));
+  setText('stat-active', String(jobsData.filter(j=>j.status==='downloading'||j.status==='pending').length));
+  try{
+    const files=await fetch(API+'/api/files').then(r=>r.json());
+    setText('stat-files', String(files.length));
+    const tb=files.reduce((s,f)=>s+f.size,0);
+    setText('stat-size', humanSize(tb));
+  }catch{}
+}
+
+// ─── Player ───────────────────────────────────────────────────────────────────
+function openPlayer(filename){
+  const url=API+'/api/files/'+encodeURIComponent(filename);
+  document.getElementById('player-title').textContent=filename;
+  document.getElementById('player-dl-link').href=url+'?dl=1';
+  document.getElementById('player-dl-link').download=filename;
+  if(isVideo(filename)){
+    document.getElementById('player-video-wrap').style.display='block';
+    document.getElementById('player-audio-wrap').style.display='none';
+    const v=document.getElementById('player-video'); v.src=url; v.load();
+  } else {
+    document.getElementById('player-video-wrap').style.display='none';
+    document.getElementById('player-audio-wrap').style.display='flex';
+    const a=document.getElementById('player-audio'); a.src=url; a.load();
+  }
+  document.getElementById('player-modal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closePlayer(){
+  document.getElementById('player-modal').classList.remove('open');
+  const v=document.getElementById('player-video'); v.pause(); v.src='';
+  const a=document.getElementById('player-audio'); a.pause(); a.src='';
+  document.body.style.overflow='';
+}
+document.getElementById('player-modal').addEventListener('click',function(e){ if(e.target===this) closePlayer(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closePlayer(); });
+
+// ─── Upload ───────────────────────────────────────────────────────────────────
+async function uploadFiles(files){
+  if(!files.length) return;
+  const form=new FormData();
+  for(const f of files) form.append('file',f);
+  const prog=document.getElementById('upload-progress');
+  const fill=document.getElementById('upload-fill');
+  const status=document.getElementById('upload-status');
+  prog.style.display='block'; fill.style.width='30%';
+  status.textContent=`Enviando ${files.length} arquivo(s)…`;
+  try{
+    const data=await fetch(API+'/api/upload',{method:'POST',body:form}).then(r=>r.json());
+    fill.style.width='100%';
+    status.textContent=`✓ ${data.uploaded.length} arquivo(s) enviado(s)`;
+    toast(`${data.uploaded.length} arquivo(s) enviado(s)`,'success');
+    setTimeout(()=>{ prog.style.display='none'; fill.style.width='0%'; },2000);
+  }catch(e){ status.textContent='Erro: '+e.message; toast('Falha no upload','error'); }
+}
+const dz=document.getElementById('dropzone');
+dz.addEventListener('dragover',e=>{ e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{ e.preventDefault(); dz.classList.remove('dragover'); uploadFiles(e.dataTransfer.files); });
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+loadJobs();
+setInterval(loadJobs, 2000);
 </script>
 </body>
 </html>
