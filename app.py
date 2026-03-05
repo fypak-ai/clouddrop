@@ -23,15 +23,42 @@ except ImportError:
 
 # Public trackers injected into every magnet to maximise peers
 PUBLIC_TRACKERS = [
+    # Tier-1: highest uptime / most peers
     "udp://tracker.opentrackr.org:1337/announce",
     "udp://open.tracker.cl:1337/announce",
     "udp://tracker.openbittorrent.com:6969/announce",
     "udp://tracker.torrent.eu.org:451/announce",
+    "udp://exodus.desync.com:6969/announce",
+    "udp://opentracker.io:6969/announce",
     "udp://explodie.org:6969/announce",
     "udp://tracker.bt4g.com:2095/announce",
-    "udp://opentracker.io:6969/announce",
-    "udp://exodus.desync.com:6969/announce",
+    "udp://tracker1.bt.moack.co.kr:80/announce",
+    "udp://tracker.dler.org:6969/announce",
+    "udp://tracker.tiny-vps.com:6969/announce",
+    "udp://tracker.theoks.net:6969/announce",
+    "udp://open.stealth.si:80/announce",
+    "udp://retracker01-msk-virt.corbina.net:80/announce",
+    "udp://tracker.monitorit4.me:6969/announce",
+    "udp://tracker4.itzmx.com:2710/announce",
+    "udp://tracker.moeking.me:6969/announce",
+    "udp://tracker.bitsearch.to:1337/announce",
+    "udp://tracker-udp.gbitt.info:80/announce",
+    "udp://wepzone.net:6969/announce",
+    "udp://ttk2.nbaonlineservice.com:6969/announce",
+    "udp://tracker.srv00.com:6969/announce",
+    "udp://tracker.filemail.com:6969/announce",
+    "udp://tracker.skyts.net:6969/announce",
+    "udp://tracker.0x.tf:6969/announce",
+    "udp://u4.trakx.crim.ist:1337/announce",
+    "udp://6.pocketnet.app:6969/announce",
+    # HTTP/HTTPS fallback
     "https://tracker.tamersunion.org:443/announce",
+    "https://tracker1.520.jp:443/announce",
+    "https://tracker.gbitt.info:443/announce",
+    "http://tracker.moeking.me:6969/announce",
+    "http://open.acgnxtracker.com:80/announce",
+    "http://tracker.bt4g.com:2095/announce",
+    "http://www.torrentsnipe.info:2701/announce",
 ]
 
 
@@ -45,15 +72,31 @@ def _make_lt_session():
         "enable_lsd": True,
         "enable_upnp": True,
         "enable_natpmp": True,
-        "connections_limit": 300,
-        "connection_speed": 50,
-        "num_want": 200,
-        "unchoke_slots_limit": 8,
+        # Connection limits — more peers = more throughput
+        "connections_limit": 800,
+        "connection_speed": 200,          # new connections attempted per second
+        "unchoke_slots_limit": 32,        # simultaneous upload slots (helps reciprocity)
+        # Download aggressiveness
+        "num_want": 400,                  # peers requested per tracker announce
         "request_queue_time": 3,
-        "max_out_request_queue": 1500,
+        "max_out_request_queue": 3000,    # outstanding block requests
         "piece_timeout": 20,
+        "whole_pieces_threshold": 20,
+        # Announce to every tracker simultaneously
         "announce_to_all_trackers": True,
         "announce_to_all_tiers": True,
+        # Reduce peer connect timeout — drop slow peers faster
+        "peer_connect_timeout": 5,
+        "request_timeout": 10,
+        # Allow more active torrents
+        "active_downloads": 20,
+        "active_seeds": 10,
+        "active_limit": 30,
+        # Speed limits — 0 = unlimited
+        "download_rate_limit": 0,
+        "upload_rate_limit": 0,
+        # DHT aggressiveness
+        "dht_upload_rate_limit": 20000,   # bytes/s for DHT traffic
     }
     try:
         ses.apply_settings(settings)
@@ -64,6 +107,9 @@ def _make_lt_session():
         ses.add_dht_router("router.bittorrent.com", 6881)
         ses.add_dht_router("router.utorrent.com", 6881)
         ses.add_dht_router("dht.transmissionbt.com", 6881)
+        ses.add_dht_router("dht.aelitis.com", 6881)          # Vuze/Azureus
+        ses.add_dht_router("router.silotis.us", 6881)
+        ses.add_dht_router("dht.libtorrent.org", 25401)
         ses.start_dht()
         ses.start_lsd()
         ses.start_upnp()
