@@ -99,7 +99,7 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
   
     /* ── Selection bar + checkbox ───────────────────────────── */
-    .sel-checkbox { position:absolute; top:8px; left:8px; z-index:10; cursor:pointer; }
+    .sel-checkbox { position:absolute; top:8px; left:8px; z-index:10; cursor:pointer; opacity:0.7; }
     .sel-checkbox input { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
     .file-card { position:relative; }
     #sel-bar { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
@@ -463,16 +463,17 @@ function renderFilesGrid(files) {
 }
 
 // Delegated event handler for files-grid (handles play + delete via data-* attrs)
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('files-grid').addEventListener('click', function(e) {
-    const playEl = e.target.closest('[data-play]');
-    const delEl  = e.target.closest('[data-del]');
-    if (playEl) { openPlayer(decodeURIComponent(playEl.dataset.play)); }
-    if (delEl)  { deleteFile(decodeURIComponent(delEl.dataset.del)); }
-  });
-  document.getElementById('files-grid').addEventListener('change', function(e) {
-    if (e.target.classList.contains('file-sel-cb')) updateSelectionBar();
-  });
+// Delegated listeners on document — safe regardless of when files-grid renders
+document.addEventListener('click', function(e) {
+  const grid = e.target.closest('#files-grid');
+  if (!grid) return;
+  const playEl = e.target.closest('[data-play]');
+  const delEl  = e.target.closest('[data-del]');
+  if (playEl) { openPlayer(decodeURIComponent(playEl.dataset.play)); }
+  if (delEl)  { deleteFile(decodeURIComponent(delEl.dataset.del)); }
+});
+document.addEventListener('change', function(e) {
+  if (e.target.classList.contains('file-sel-cb')) updateSelectionBar();
 });
 
 // HTML-escape helper (prevents XSS from filenames with < > & " chars)
@@ -668,7 +669,7 @@ function openPlayer(filename) {
   } else {
     document.getElementById('player-video-wrap').style.display = 'none';
     document.getElementById('player-audio-wrap').style.display = 'flex';
-    const a = document.getElementById('player-audio'); a.src = url; a.load();
+    const a = document.getElementById('player-audio'); a.src = streamUrl; a.load();
   }
   document.getElementById('player-modal').classList.add('open');
   document.body.style.overflow = 'hidden';
