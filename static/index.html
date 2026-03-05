@@ -347,7 +347,7 @@ async function checkLtStatus(){
 }
 
 // ─ Remote Download
-async async function startDownload(){
+async function startDownload(){
   const url=document.getElementById('url-input').value.trim();
   const fn=document.getElementById('fname-input').value.trim();
   if(!url){toast('Cole uma URL ou magnet link','error');return;}
