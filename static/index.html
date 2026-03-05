@@ -281,7 +281,8 @@ function showTab(name, e) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  if (e) e.target.classList.add('active');
+  const btn = document.getElementById('tab-btn-' + name);
+  if (btn) btn.classList.add('active');
   activeTab = name;
   if (name === 'files') { clearNewBadge(); loadFiles(); }
 }
@@ -346,7 +347,7 @@ async function checkLtStatus(){
 }
 
 // ─ Remote Download
-async function startDownload(){
+async async function startDownload(){
   const url=document.getElementById('url-input').value.trim();
   const fn=document.getElementById('fname-input').value.trim();
   if(!url){toast('Cole uma URL ou magnet link','error');return;}
@@ -976,11 +977,28 @@ function buildSRCard(r) {
 function startFromSearch(magnet) {
   showTab('downloads', null);
   document.getElementById('url-input').value = magnet;
-  startDownload();
+  // small delay to allow tab to render before triggering download
+  setTimeout(startDownload, 50);
 }
 
 function copyMagnet(magnet) {
-  navigator.clipboard.writeText(magnet).then(() => toast('Magnet copiado!'));
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(magnet)
+      .then(() => toast('Magnet copiado!'))
+      .catch(() => _copyFallback(magnet));
+  } else {
+    _copyFallback(magnet);
+  }
+}
+function _copyFallback(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); toast('Magnet copiado!'); }
+  catch(e) { toast('Falha ao copiar', 'error'); }
+  document.body.removeChild(ta);
 }
 
 // Init search sources when search tab is first opened
