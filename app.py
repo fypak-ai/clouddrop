@@ -323,8 +323,8 @@ def list_files():
                 "size": st.st_size,
                 "size_human": human_size(st.st_size),
                 "modified": st.st_mtime,
-                "is_video": ext in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"},
-                "is_audio": ext in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac"},
+                "is_video": ext in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".ts", ".flv", ".wmv", ".3gp", ".mpeg", ".mpg", ".vob", ".rm", ".rmvb", ".divx"},
+                "is_audio": ext in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma", ".opus"},
             })
         elif item.is_dir():
             all_files = sorted(
@@ -341,8 +341,8 @@ def list_files():
                     "name": str(p.relative_to(UPLOAD_DIR)),
                     "size": p.stat().st_size,
                     "size_human": human_size(p.stat().st_size),
-                    "is_video": p.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"},
-                    "is_audio": p.suffix.lower() in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac"},
+                    "is_video": p.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".ts", ".flv", ".wmv", ".3gp", ".mpeg", ".mpg", ".vob", ".rm", ".rmvb", ".divx"},
+                    "is_audio": p.suffix.lower() in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma", ".opus"},
                 }
                 for p in all_files
             ]
@@ -354,21 +354,30 @@ def list_files():
                 "modified": item.stat().st_mtime,
                 "file_count": len(all_files),
                 "main_file": str(main_file.relative_to(UPLOAD_DIR)),
-                "is_video": main_ext in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"},
-                "is_audio": main_ext in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac"},
+                "is_video": main_ext in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".ts", ".flv", ".wmv", ".3gp", ".mpeg", ".mpg", ".vob", ".rm", ".rmvb", ".divx"},
+                "is_audio": main_ext in {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma", ".opus"},
                 "children": children,
             })
     return jsonify(entries)
 
+
+# Formats that need server-side transcoding to play in browser
+TRANSCODE_EXTS = {".avi", ".flv", ".wmv", ".ts", ".3gp", ".mpeg", ".mpg", ".vob", ".rm", ".rmvb", ".divx"}
 
 def _mime(suffix):
     return {
         ".mp4": "video/mp4", ".mkv": "video/x-matroska",
         ".webm": "video/webm", ".avi": "video/x-msvideo",
         ".mov": "video/quicktime", ".m4v": "video/mp4",
+        ".ts": "video/mp2t", ".flv": "video/x-flv",
+        ".wmv": "video/x-ms-wmv", ".3gp": "video/3gpp",
+        ".mpeg": "video/mpeg", ".mpg": "video/mpeg",
+        ".vob": "video/dvd", ".rm": "application/vnd.rn-realmedia",
+        ".rmvb": "application/vnd.rn-realmedia-vbr", ".divx": "video/divx",
         ".mp3": "audio/mpeg", ".flac": "audio/flac",
         ".wav": "audio/wav", ".ogg": "audio/ogg",
         ".m4a": "audio/mp4", ".aac": "audio/aac",
+        ".wma": "audio/x-ms-wma", ".opus": "audio/opus",
     }.get(suffix.lower(), "application/octet-stream")
 
 
@@ -441,6 +450,127 @@ def api_status():
         "files_count": sum(1 for f in UPLOAD_DIR.rglob("*") if f.is_file()),
         "public_trackers": len(PUBLIC_TRACKERS),
     })
+
+
+
+# ── Transcode (AVI/FLV/WMV/etc → webm via FFmpeg) ──────────────────────────
+@app.route("/api/transcode/<path:filename>", methods=["GET"])
+def transcode_file(filename):
+    """Stream-transcode unsupported formats to webm via FFmpeg."""
+    import subprocess, shutil
+    path = (UPLOAD_DIR / filename).resolve()
+    if not str(path).startswith(str(UPLOAD_DIR.resolve())):
+        abort(403)
+    if not path.exists() or not path.is_file():
+        abort(404)
+    if not shutil.which("ffmpeg"):
+        # FFmpeg not available – fall back to direct serve (may not play)
+        return serve_file(filename)
+    cmd = [
+        "ffmpeg", "-i", str(path),
+        "-c:v", "libvpx-vp9", "-crf", "33", "-b:v", "0",
+        "-c:a", "libopus", "-b:a", "128k",
+        "-f", "webm", "-"
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    def generate():
+        try:
+            while True:
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            proc.kill()
+    return Response(generate(), mimetype="video/webm",
+                    headers={"Content-Disposition": f"inline; filename="{path.stem}.webm""})
+
+
+# ── Dropbox integration ──────────────────────────────────────────────────────
+# Simple token storage (in-memory; survives redeploys if you set DROPBOX_TOKEN env)
+_dropbox_token = os.getenv("DROPBOX_TOKEN", "")
+
+@app.route("/api/dropbox/status", methods=["GET"])
+def dropbox_status():
+    return jsonify({"connected": bool(_dropbox_token)})
+
+@app.route("/api/dropbox/set-token", methods=["POST"])
+def dropbox_set_token():
+    global _dropbox_token
+    data = request.get_json(force=True)
+    token = (data or {}).get("token", "").strip()
+    if not token:
+        return jsonify({"error": "token required"}), 400
+    _dropbox_token = token
+    return jsonify({"ok": True})
+
+@app.route("/api/dropbox/upload", methods=["POST"])
+def dropbox_upload():
+    """Upload one or more files/folders to Dropbox.
+    Body JSON: { files: ["rel/path1", "Folder/Name", ...] }
+    Returns per-file results.
+    """
+    global _dropbox_token
+    if not _dropbox_token:
+        return jsonify({"error": "Dropbox not connected"}), 401
+    data = request.get_json(force=True) or {}
+    names = data.get("files", [])
+    if not names:
+        return jsonify({"error": "no files specified"}), 400
+
+    results = []
+    HEADERS = {
+        "Authorization": f"Bearer {_dropbox_token}",
+        "Content-Type": "application/octet-stream",
+        "Dropbox-API-Arg": "",
+    }
+
+    def upload_one(rel_path):
+        path = (UPLOAD_DIR / rel_path).resolve()
+        if not str(path).startswith(str(UPLOAD_DIR.resolve())):
+            return {"file": rel_path, "ok": False, "error": "forbidden"}
+        if not path.exists():
+            return {"file": rel_path, "ok": False, "error": "not found"}
+
+        files_to_upload = []
+        if path.is_file():
+            files_to_upload = [(path, "/" + path.name)]
+        elif path.is_dir():
+            for p in sorted(path.rglob("*")):
+                if p.is_file():
+                    files_to_upload.append((p, "/" + str(p.relative_to(UPLOAD_DIR))))
+
+        errs = []
+        for fpath, dbx_path in files_to_upload:
+            import json as _json
+            h = dict(HEADERS)
+            h["Dropbox-API-Arg"] = _json.dumps({
+                "path": dbx_path,
+                "mode": "overwrite",
+                "autorename": False,
+                "mute": False,
+            })
+            with open(fpath, "rb") as fh:
+                r = requests.post(
+                    "https://content.dropboxapi.com/2/files/upload",
+                    headers=h,
+                    data=fh,
+                    timeout=300,
+                )
+            if r.status_code != 200:
+                errs.append(f"{fpath.name}: {r.text[:120]}")
+
+        if errs:
+            return {"file": rel_path, "ok": False, "error": "; ".join(errs)}
+        return {"file": rel_path, "ok": True}
+
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        futures = {ex.submit(upload_one, n): n for n in names}
+        for fut in concurrent.futures.as_completed(futures):
+            results.append(fut.result())
+
+    return jsonify(results)
 
 
 if __name__ == "__main__":

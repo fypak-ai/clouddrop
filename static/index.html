@@ -97,7 +97,30 @@
     .lt-dot.warn { background: var(--warning); }
     .new-badge { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 10px; font-weight: 700; animation: pulse 1s ease infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-  </style>
+  
+    /* ── Selection bar + checkbox ───────────────────────────── */
+    .sel-checkbox { position:absolute; top:8px; left:8px; z-index:10; cursor:pointer; }
+    .sel-checkbox input { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+    .file-card { position:relative; }
+    #sel-bar { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+      background:var(--surface2); border:1px solid var(--accent); border-radius:10px;
+      padding:10px 18px; display:none; align-items:center; gap:12px;
+      box-shadow:0 4px 24px rgba(0,0,0,.5); z-index:200; white-space:nowrap; }
+    #sel-bar.visible { display:flex; }
+    .btn-dropbox { background:#0061FE; color:#fff; border:none; border-radius:6px;
+      padding:7px 14px; font-size:13px; cursor:pointer; font-weight:600; }
+    .btn-dropbox:hover { background:#0052d6; }
+    #dbx-modal { position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;
+      align-items:center;justify-content:center;z-index:300; }
+    #dbx-modal.open { display:flex; }
+    #dbx-modal .modal-box { background:var(--surface2);border:1px solid var(--border);
+      border-radius:12px;padding:24px;min-width:320px;max-width:440px;width:90%; }
+    #dbx-modal h3 { margin:0 0 12px; font-size:16px; }
+    #dbx-token-input { width:100%;box-sizing:border-box;padding:8px 10px;font-size:13px;
+      border-radius:6px;border:1px solid var(--border);background:var(--surface3);
+      color:var(--text);margin-bottom:10px; }
+    #dbx-upload-progress { margin-top:12px; font-size:13px; color:var(--muted); }
+</style>
 </head>
 <body>
 <header>
@@ -237,8 +260,8 @@ function fileIcon(name) {
            zip:'🗜️',rar:'🗜️','7z':'🗜️',tar:'🗜️',gz:'🗜️',
            iso:'💿',exe:'⚙️',torrent:'🌊'}[ext]||'📁');
 }
-function isVideo(n){ return /\.(mp4|mkv|webm|avi|mov|m4v)$/i.test(n); }
-function isAudio(n){ return /\.(mp3|flac|wav|ogg|m4a|aac)$/i.test(n); }
+function isVideo(n){ return /\.(mp4|mkv|webm|avi|mov|m4v|ts|flv|wmv|3gp|mpeg|mpg|vob|rm|rmvb|divx)$/i.test(n); }
+function isAudio(n){ return /\.(mp3|flac|wav|ogg|m4a|aac|wma|opus)$/i.test(n); }
 function isMagnet(u){ return u.trim().toLowerCase().startsWith('magnet:'); }
 function humanSize(b){
   const u=['B','KB','MB','GB','TB']; let i=0;
@@ -403,7 +426,8 @@ function renderFilesGrid(files) {
         : '';
       const delBtn = '<button class="btn btn-danger" data-del="' + encodeURIComponent(f.name) + '">&#x1F5D1; Excluir pasta</button>';
 
-      return '<div class="file-card" style="grid-column:1/-1">'
+      return '<div class="file-card" style="grid-column:1/-1"  data-fname="' + encodeURIComponent(f.name) + '">'
+        + '<label class="sel-checkbox" title="Selecionar"><input type="checkbox" class="file-sel-cb" data-fname="' + encodeURIComponent(f.name) + '"></label>'
         + '<div style="display:flex;gap:12px;align-items:flex-start">'
         + thumb
         + '<div class="file-info" style="flex:1;min-width:0">'
@@ -426,7 +450,7 @@ function renderFilesGrid(files) {
     const playBtn = canPlay
       ? '<button class="btn-green" data-play="' + encodeURIComponent(name) + '">&#x25B6; Play</button>'
       : '';
-    return '<div class="file-card">' + thumb
+    return '<div class="file-card" data-fname="' + encodeURIComponent(name) + '">'      + '<label class="sel-checkbox" title="Selecionar"><input type="checkbox" class="file-sel-cb" data-fname="' + encodeURIComponent(name) + '"></label>'      + thumb
       + '<div class="file-info">'
       + '<div class="file-info-name" title="' + escHtml(name) + '">' + escHtml(name) + '</div>'
       + '<div class="file-info-size">' + f.size_human + '</div>'
@@ -445,6 +469,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const delEl  = e.target.closest('[data-del]');
     if (playEl) { openPlayer(decodeURIComponent(playEl.dataset.play)); }
     if (delEl)  { deleteFile(decodeURIComponent(delEl.dataset.del)); }
+  });
+  document.getElementById('files-grid').addEventListener('change', function(e) {
+    if (e.target.classList.contains('file-sel-cb')) updateSelectionBar();
   });
 });
 
@@ -622,15 +649,22 @@ async function clearCompleted() {
 }
 
 // ─ Player
+// Formats that browsers can't play natively → transcode via server
+const TRANSCODE_EXTS = /\.(avi|flv|wmv|ts|3gp|mpeg|mpg|vob|rm|rmvb|divx)$/i;
+function needsTranscode(n){ return TRANSCODE_EXTS.test(n); }
+
 function openPlayer(filename) {
-  const url = API + fileUrl(filename);
+  const rawUrl    = API + fileUrl(filename);
+  const streamUrl = needsTranscode(filename)
+    ? API + '/api/transcode/' + filename.split('/').map(encodeURIComponent).join('/')
+    : rawUrl;
   document.getElementById('player-title').textContent = filename;
-  document.getElementById('player-dl-link').href     = url + '?dl=1';
+  document.getElementById('player-dl-link').href     = rawUrl + '?dl=1';
   document.getElementById('player-dl-link').download  = filename;
   if (isVideo(filename)) {
     document.getElementById('player-video-wrap').style.display = 'block';
     document.getElementById('player-audio-wrap').style.display = 'none';
-    const v = document.getElementById('player-video'); v.src = url; v.load();
+    const v = document.getElementById('player-video'); v.src = streamUrl; v.load();
   } else {
     document.getElementById('player-video-wrap').style.display = 'none';
     document.getElementById('player-audio-wrap').style.display = 'flex';
@@ -678,5 +712,114 @@ dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag
 pollJobs();       // starts chained job poll loop
 filesSyncLoop();  // starts chained file stats loop
 </script>
+
+<!-- Selection bar -->
+<div id="sel-bar">
+  <span id="sel-count">0 selecionados</span>
+  <button class="btn-dropbox" onclick="sendToDropbox()">☁️ Enviar para Dropbox</button>
+  <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="clearSelection()">✕ Limpar</button>
+</div>
+
+<!-- Dropbox token modal -->
+<div id="dbx-modal">
+  <div class="modal-box">
+    <h3>Conectar ao Dropbox</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Cole um <strong>Access Token</strong> do Dropbox.<br>
+      Gere em <a href="https://www.dropbox.com/developers/apps" target="_blank" style="color:var(--accent)">dropbox.com/developers/apps</a>
+      → crie um App → gere "Access token".
+    </p>
+    <input type="password" id="dbx-token-input" placeholder="sl.xxxxxxxxxxx..." autocomplete="off">
+    <div id="dbx-upload-progress"></div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn-dropbox" onclick="saveDropboxToken()">Salvar e enviar</button>
+      <button class="btn btn-ghost" style="font-size:13px;padding:8px 14px" onclick="closeDropboxModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── File selection ──────────────────────────────────────────────────────────
+function getSelectedFiles() {
+  return Array.from(document.querySelectorAll('.file-sel-cb:checked'))
+    .map(cb => decodeURIComponent(cb.dataset.fname));
+}
+function updateSelectionBar() {
+  const sel = getSelectedFiles();
+  const bar = document.getElementById('sel-bar');
+  document.getElementById('sel-count').textContent = sel.length + ' selecionado' + (sel.length !== 1 ? 's' : '');
+  bar.classList.toggle('visible', sel.length > 0);
+}
+function clearSelection() {
+  document.querySelectorAll('.file-sel-cb:checked').forEach(cb => cb.checked = false);
+  updateSelectionBar();
+}
+
+// ── Dropbox integration ─────────────────────────────────────────────────────
+let _pendingDropboxUpload = false;
+
+async function sendToDropbox() {
+  const files = getSelectedFiles();
+  if (!files.length) return;
+
+  const status = await fetch('/api/dropbox/status').then(r=>r.json()).catch(()=>({connected:false}));
+  if (!status.connected) {
+    _pendingDropboxUpload = true;
+    openDropboxModal();
+    return;
+  }
+  await doDropboxUpload(files);
+}
+
+function openDropboxModal() {
+  document.getElementById('dbx-modal').classList.add('open');
+  document.getElementById('dbx-upload-progress').textContent = '';
+}
+function closeDropboxModal() {
+  document.getElementById('dbx-modal').classList.remove('open');
+  _pendingDropboxUpload = false;
+}
+
+async function saveDropboxToken() {
+  const token = document.getElementById('dbx-token-input').value.trim();
+  if (!token) { toast('Cole o Access Token', 'error'); return; }
+  const prog = document.getElementById('dbx-upload-progress');
+  prog.textContent = 'Salvando token…';
+  const r = await fetch('/api/dropbox/set-token', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({token})
+  });
+  if (!r.ok) { prog.textContent = 'Erro ao salvar token.'; return; }
+  prog.textContent = '';
+  closeDropboxModal();
+  if (_pendingDropboxUpload) {
+    _pendingDropboxUpload = false;
+    await doDropboxUpload(getSelectedFiles());
+  }
+}
+
+async function doDropboxUpload(files) {
+  toast('Enviando ' + files.length + ' item(s) para Dropbox…', 'info');
+  const r = await fetch('/api/dropbox/upload', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({files})
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(()=>({error:'Erro desconhecido'}));
+    toast('Dropbox: ' + (e.error || 'erro'), 'error'); return;
+  }
+  const results = await r.json();
+  const ok  = results.filter(x=>x.ok).length;
+  const bad = results.filter(x=>!x.ok);
+  if (bad.length) {
+    bad.forEach(b => toast('Erro: ' + b.file + ' — ' + b.error, 'error'));
+  }
+  if (ok > 0) toast(ok + ' arquivo(s) enviado(s) para Dropbox ✓', 'success');
+  clearSelection();
+}
+</script>
+
 </body>
 </html>
