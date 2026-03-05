@@ -41,8 +41,7 @@
     .dropzone p { color: var(--muted); font-size: 14px; }
     .dropzone span { color: var(--accent); font-weight: 600; }
     #file-input { display: none; }
-    /* --- Job cards --- */
-    .jobs-list { display: flex; flex-direction: column; gap: 12px; }
+    .jobs-list { display: flex; flex-direction: column; gap: 12px; min-height: 60px; }
     .job-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
     .job-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 10px; }
     .job-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -55,9 +54,8 @@
     .badge-completed  { background: rgba(34,197,94,.15);  color: var(--success); }
     .badge-failed     { background: rgba(239,68,68,.15);  color: var(--danger); }
     .progress-bar  { height: 5px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
-    .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .5s linear; }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .6s linear; }
     .progress-fill.torrent { background: linear-gradient(90deg,#f59e0b,#2563eb); }
-    /* --- Files grid --- */
     .files-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap: 14px; }
     .file-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: border-color .2s; }
     .file-card:hover { border-color: var(--accent); }
@@ -68,7 +66,6 @@
     .file-info-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
     .file-info-size { font-size: 11px; color: var(--muted); }
     .file-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-    /* --- Player modal --- */
     #player-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.88); z-index: 1000; align-items: center; justify-content: center; }
     #player-modal.open { display: flex; }
     .player-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; width: min(92vw,860px); max-height: 92vh; display: flex; flex-direction: column; }
@@ -80,7 +77,6 @@
     #player-audio-wrap { padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
     #player-audio { width: 100%; }
     .player-footer { padding: 10px 16px; display: flex; gap: 8px; border-top: 1px solid var(--border); }
-    /* --- Misc --- */
     .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
@@ -122,7 +118,6 @@
     <div class="stat-card"><div class="stat-value" id="stat-size">0 B</div><div class="stat-label">Tamanho Total</div></div>
   </div>
 
-  <!-- Downloads tab -->
   <div class="tab-content active" id="tab-downloads">
     <div class="card">
       <div class="card-title">⬇️ Download Remoto</div>
@@ -142,12 +137,11 @@
         <button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="clearCompleted()">Limpar concluídos</button>
       </div>
       <div class="jobs-list" id="jobs-list">
-        <div class="empty" id="jobs-empty"><p>Nenhum download ainda. Cole uma URL ou magnet acima.</p></div>
+        <p class="empty" id="jobs-empty">Nenhum download ainda. Cole uma URL ou magnet acima.</p>
       </div>
     </div>
   </div>
 
-  <!-- Files tab -->
   <div class="tab-content" id="tab-files">
     <div class="card">
       <div class="card-title" style="justify-content:space-between">
@@ -159,7 +153,6 @@
     </div>
   </div>
 
-  <!-- Upload tab -->
   <div class="tab-content" id="tab-upload">
     <div class="card">
       <div class="card-title">⬆️ Upload Local</div>
@@ -176,7 +169,6 @@
   </div>
 </div>
 
-<!-- Player modal -->
 <div id="player-modal">
   <div class="player-box">
     <div class="player-header">
@@ -185,7 +177,7 @@
     </div>
     <div id="player-video-wrap"><video id="player-video" controls autoplay playsinline></video></div>
     <div id="player-audio-wrap" style="display:none">
-      <div style="font-size:56px" id="player-audio-icon">🎵</div>
+      <div style="font-size:56px">🎵</div>
       <audio id="player-audio" controls autoplay style="width:100%"></audio>
     </div>
     <div class="player-footer">
@@ -200,7 +192,7 @@
 <script>
 const API = '';
 
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
+// ─ Tabs
 function showTab(name, e) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
@@ -209,7 +201,7 @@ function showTab(name, e) {
   if (name === 'files') loadFiles();
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// ─ Toast
 function toast(msg, type = 'info') {
   const el = document.createElement('div');
   el.className = 'toast ' + type;
@@ -218,270 +210,253 @@ function toast(msg, type = 'info') {
   setTimeout(() => el.remove(), 3500);
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─ Helpers
 function fileIcon(name) {
   const ext = (name.split('.').pop() || '').toLowerCase();
   return ({mp4:'🎬',mkv:'🎬',webm:'🎬',avi:'🎬',mov:'🎬',m4v:'🎬',
            mp3:'🎵',flac:'🎵',wav:'🎵',ogg:'🎵',m4a:'🎵',aac:'🎵',
-           jpg:'🖼️',jpeg:'🖼️',png:'🖼️',
-           pdf:'📄',zip:'🗜️',rar:'🗜️',torrent:'🌊'}[ext] || '📁');
+           jpg:'🖼️',jpeg:'🖼️',png:'🖼️',pdf:'📄',zip:'🗜️',rar:'🗜️',torrent:'🌊'}[ext]||'📁');
 }
-function isVideo(n){ return /\.(mp4|mkv|webm|avi|mov|m4v)$/i.test(n); }
-function isAudio(n){ return /\.(mp3|flac|wav|ogg|m4a|aac)$/i.test(n); }
-function isMagnet(u){ return u.trim().toLowerCase().startsWith('magnet:'); }
-function humanSize(b){
-  const u=['B','KB','MB','GB','TB']; let i=0;
-  while(b>=1024&&i<u.length-1){b/=1024;i++;}
-  return b.toFixed(1)+' '+u[i];
+function isVideo(n) { return /\.(mp4|mkv|webm|avi|mov|m4v)$/i.test(n); }
+function isAudio(n) { return /\.(mp3|flac|wav|ogg|m4a|aac)$/i.test(n); }
+function isMagnet(u) { return u.trim().toLowerCase().startsWith('magnet:'); }
+function humanSize(b) {
+  const u = ['B','KB','MB','GB','TB']; let i = 0;
+  while (b >= 1024 && i < u.length-1) { b /= 1024; i++; }
+  return b.toFixed(1) + ' ' + u[i];
 }
-function setText(id, val){ const el=document.getElementById(id); if(el&&el.textContent!==val) el.textContent=val; }
-function setWidth(el, pct){ const v=pct+'%'; if(el.style.width!==v) el.style.width=v; }
+function setTxt(id, v) { const el = document.getElementById(id); if (el && el.textContent !== v) el.textContent = v; }
 
-// ─── libtorrent status (once) ─────────────────────────────────────────────────
-async function checkLtStatus(){
-  try{
-    const d = await fetch(API+'/api/status').then(r=>r.json());
-    const bar=document.getElementById('lt-status-bar');
-    const dot=document.getElementById('lt-dot');
-    const txt=document.getElementById('lt-text');
-    bar.style.display='flex';
-    if(d.libtorrent){
-      dot.className='lt-dot ok';
-      txt.textContent='libtorrent '+d.libtorrent_version+' — torrents e magnets habilitados ✓';
+// ─ libtorrent status (once on load)
+async function checkLtStatus() {
+  try {
+    const d = await fetch(API + '/api/status').then(r => r.json());
+    const bar = document.getElementById('lt-status-bar');
+    bar.style.display = 'flex';
+    if (d.libtorrent) {
+      document.getElementById('lt-dot').className = 'lt-dot ok';
+      document.getElementById('lt-text').textContent =
+        `libtorrent ${d.libtorrent_version} — ${d.public_trackers} trackers públicos habilitados ✓`;
     } else {
-      dot.className='lt-dot warn';
-      txt.textContent='libtorrent não instalado — magnets não funcionarão';
+      document.getElementById('lt-dot').className = 'lt-dot warn';
+      document.getElementById('lt-text').textContent = 'libtorrent não instalado — magnets não funcionarão';
     }
-  }catch{}
+  } catch {}
 }
 
-// ─── Remote Download ──────────────────────────────────────────────────────────
-async function startDownload(){
-  const url  = document.getElementById('url-input').value.trim();
-  const fn   = document.getElementById('fname-input').value.trim();
-  if(!url){ toast('Cole uma URL ou magnet link','error'); return; }
-  const btn  = document.getElementById('dl-btn');
+// ─ Remote Download
+async function startDownload() {
+  const url = document.getElementById('url-input').value.trim();
+  const fn  = document.getElementById('fname-input').value.trim();
+  if (!url) { toast('Cole uma URL ou magnet link', 'error'); return; }
+  const btn = document.getElementById('dl-btn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Iniciando…';
-  try{
-    const res  = await fetch(API+'/api/remote-download',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({url,filename:fn}),
+  try {
+    const res  = await fetch(API + '/api/remote-download', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({url, filename: fn}),
     });
     const data = await res.json();
-    if(!res.ok) throw new Error(data.error||'Falhou');
+    if (!res.ok) throw new Error(data.error || 'Falhou');
     document.getElementById('url-input').value  = '';
     document.getElementById('fname-input').value = '';
-    toast(data.type==='torrent'?'Torrent adicionado à fila!':'Download iniciado!','success');
-  }catch(e){ toast('Erro: '+e.message,'error'); }
-  finally{ btn.disabled=false; btn.textContent='Download'; }
+    toast(data.type === 'torrent' ? 'Torrent adicionado à fila!' : 'Download iniciado!', 'success');
+  } catch(e) { toast('Erro: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Download'; }
 }
-
-document.addEventListener('DOMContentLoaded',()=>{
-  document.getElementById('url-input').addEventListener('keydown',e=>{ if(e.key==='Enter') startDownload(); });
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('url-input').addEventListener('keydown', e => { if (e.key === 'Enter') startDownload(); });
   checkLtStatus();
 });
 
-// ─── Jobs: stable in-place DOM reconciliation ────────────────────────────────
+// ─ Jobs: independent polling cycle (2s), NO /api/files call inside
 let jobsData = [];
 
-async function loadJobs(){
-  try{
-    const res  = await fetch(API+'/api/jobs');
-    jobsData   = await res.json();
+async function pollJobs() {
+  try {
+    jobsData = await fetch(API + '/api/jobs').then(r => r.json());
     reconcileJobs(jobsData);
-    updateStats();
-  }catch{}
+    // update only job-derived stats (total, active) without touching files stats
+    setTxt('stat-total',  String(jobsData.length));
+    setTxt('stat-active', String(jobsData.filter(j => j.status==='downloading'||j.status==='pending').length));
+  } catch {}
 }
 
-const BADGE_CLASS = {
+// ─ File stats: separate slow cycle (10s) to avoid constant /api/files polling
+async function pollFileStats() {
+  try {
+    const files = await fetch(API + '/api/files').then(r => r.json());
+    setTxt('stat-files', String(files.length));
+    setTxt('stat-size', humanSize(files.reduce((s, f) => s + f.size, 0)));
+  } catch {}
+}
+
+// Badge / label maps
+const BADGE = {
   pending:'badge-pending', downloading:'badge-downloading',
   torrent_dl:'badge-torrent', completed:'badge-completed', failed:'badge-failed',
 };
-const STATUS_LABEL = {
+const LABEL = {
   pending:'Pendente', downloading:'Baixando', torrent_dl:'🌊 Torrent',
   completed:'Concluído', failed:'Falhou',
 };
-
-function jobStatusKey(job){
-  if(job.status==='downloading'&&job.type==='torrent') return 'torrent_dl';
-  return job.status;
+function statusKey(job) {
+  return (job.status === 'downloading' && job.type === 'torrent') ? 'torrent_dl' : job.status;
 }
 
-/**
- * Reconcile the jobs list DOM without full rewrite.
- * Strategy:
- *   1. Build a map of existing DOM nodes keyed by job id.
- *   2. Iterate new data: update existing node or create new one.
- *   3. Append/move nodes to match order.
- *   4. Remove nodes no longer in data.
- */
-function reconcileJobs(jobs){
+// ─ DOM reconciliation (in-place, no full re-render)
+function reconcileJobs(jobs) {
   const container = document.getElementById('jobs-list');
   const emptyEl   = document.getElementById('jobs-empty');
 
-  if(!jobs.length){
-    // remove all job cards, show placeholder
-    container.querySelectorAll('.job-item').forEach(n=>n.remove());
-    if(emptyEl) emptyEl.style.display='';
+  if (!jobs.length) {
+    container.querySelectorAll('.job-item').forEach(n => n.remove());
+    if (emptyEl) emptyEl.style.display = '';
     return;
   }
-  if(emptyEl) emptyEl.style.display='none';
+  if (emptyEl) emptyEl.style.display = 'none';
 
-  // map id → existing DOM node
+  // existing node map
   const existing = {};
-  container.querySelectorAll('.job-item[data-id]').forEach(n=>{ existing[n.dataset.id]=n; });
+  container.querySelectorAll('.job-item[data-id]').forEach(n => { existing[n.dataset.id] = n; });
 
-  jobs.forEach((job,idx)=>{
+  jobs.forEach((job, idx) => {
     let node = existing[job.id];
-    if(!node){
-      node = createJobNode(job);
-    } else {
-      updateJobNode(node, job);
-    }
-    // ensure correct order in DOM
-    const children = container.querySelectorAll('.job-item[data-id]');
-    const current  = children[idx];
-    if(current !== node){
-      // insert before current sibling (or append)
-      if(current) container.insertBefore(node, current);
-      else        container.appendChild(node);
+    if (!node) { node = createJobNode(job); }
+    else        { patchJobNode(node, job); }
+
+    // maintain order
+    const siblings = container.querySelectorAll('.job-item[data-id]');
+    const sibling  = siblings[idx];
+    if (sibling !== node) {
+      if (sibling) container.insertBefore(node, sibling);
+      else         container.appendChild(node);
     }
   });
 
-  // remove stale nodes
-  const newIds = new Set(jobs.map(j=>j.id));
-  container.querySelectorAll('.job-item[data-id]').forEach(n=>{
-    if(!newIds.has(n.dataset.id)) n.remove();
-  });
+  // remove deleted
+  const alive = new Set(jobs.map(j => j.id));
+  container.querySelectorAll('.job-item[data-id]').forEach(n => { if (!alive.has(n.dataset.id)) n.remove(); });
 }
 
-function displayName(job){
-  if(job.filename) return job.filename;
-  if(isMagnet(job.url)) return 'Torrent — aguardando metadados…';
+function displayName(job) {
+  if (job.filename) return job.filename;
+  if (isMagnet(job.url)) return 'Torrent — aguardando metadados…';
   return job.url.split('/').pop().split('?')[0] || job.url;
 }
 
-function createJobNode(job){
+function createJobNode(job) {
   const div = document.createElement('div');
   div.className = 'job-item';
   div.dataset.id = job.id;
   div.innerHTML = `
     <div class="job-header">
-      <span class="job-name" data-role="name"></span>
-      <div class="job-btns" data-role="btns" style="display:flex;gap:6px;align-items:center"></div>
+      <span class="job-name" data-r="name"></span>
+      <div data-r="btns" style="display:flex;gap:6px;align-items:center"></div>
     </div>
-    <div class="job-url"  data-role="url"></div>
-    <div class="job-meta" data-role="meta"></div>
-    <div class="progress-bar" data-role="pb" style="display:none">
-      <div class="progress-fill" data-role="fill" style="width:0%"></div>
+    <div class="job-url" data-r="url"></div>
+    <div class="job-meta" data-r="meta"></div>
+    <div class="progress-bar" data-r="pb" style="display:none">
+      <div class="progress-fill" data-r="fill" style="width:0%"></div>
     </div>`;
-  updateJobNode(div, job);
+  patchJobNode(div, job);
   return div;
 }
 
-function updateJobNode(node, job){
-  const sk   = jobStatusKey(job);
+function patchJobNode(node, job) {
+  const sk   = statusKey(job);
   const name = displayName(job);
 
   // name
-  const nameEl = node.querySelector('[data-role=name]');
-  const nameVal = fileIcon(name)+' '+name;
-  if(nameEl.textContent !== nameVal) nameEl.textContent = nameVal;
+  const nameEl = node.querySelector('[data-r=name]');
+  const nv = fileIcon(name) + ' ' + name;
+  if (nameEl.textContent !== nv) nameEl.textContent = nv;
 
   // url
-  const urlEl  = node.querySelector('[data-role=url]');
-  const urlVal = isMagnet(job.url) ? '🌊 '+job.url.slice(0,80)+(job.url.length>80?'…':'') : job.url;
-  if(urlEl.textContent !== urlVal) urlEl.textContent = urlVal;
+  const urlEl = node.querySelector('[data-r=url]');
+  const uv = isMagnet(job.url) ? '🌊 ' + job.url.slice(0, 80) + (job.url.length > 80 ? '…' : '') : job.url;
+  if (urlEl.textContent !== uv) urlEl.textContent = uv;
 
-  // meta
-  const metaEl = node.querySelector('[data-role=meta]');
-  const bc     = BADGE_CLASS[sk] || 'badge-pending';
-  const label  = STATUS_LABEL[sk] || job.status;
-  let metaHTML = `<span class="badge ${bc}">${label}</span>`;
-  if(job.size_human && job.size_human!=='—') metaHTML += `<span>${job.size_human}</span>`;
-  if(job.status==='downloading') metaHTML += `<span>${job.progress||0}%</span>`;
-  if(job.type==='torrent'){
-    if(job.speed)  metaHTML += `<span>${job.speed}</span>`;
-    if(job.peers!=null) metaHTML += `<span>${job.peers} peers</span>`;
-    if(job.info)   metaHTML += `<span style="color:#60a5fa;font-size:11px">${job.info}</span>`;
-  }
-  if(job.error) metaHTML += `<span style="color:var(--danger)">${job.error}</span>`;
-  // only update if changed (avoids layout thrash)
-  if(metaEl.innerHTML !== metaHTML) metaEl.innerHTML = metaHTML;
+  // meta — build string, only update innerHTML if changed
+  const metaEl = node.querySelector('[data-r=meta]');
+  const bc = BADGE[sk] || 'badge-pending';
+  const lb = LABEL[sk] || job.status;
+  let m = `<span class="badge ${bc}">${lb}</span>`;
+  if (job.size_human && job.size_human !== '—') m += `<span>${job.size_human}</span>`;
+  if (job.status === 'downloading') m += `<span>${job.progress || 0}%</span>`;
+  if (job.speed)  m += `<span>📡 ${job.speed}</span>`;
+  if (job.seeds != null && job.seeds > 0) m += `<span>🌱 ${job.seeds} seeds</span>`;
+  if (job.peers != null && job.peers > 0) m += `<span>👥 ${job.peers} peers</span>`;
+  if (job.info)  m += `<span style="color:#60a5fa;font-size:11px">${job.info}</span>`;
+  if (job.error) m += `<span style="color:var(--danger)">${job.error}</span>`;
+  if (metaEl.innerHTML !== m) metaEl.innerHTML = m;
 
   // progress bar
-  const pb   = node.querySelector('[data-role=pb]');
-  const fill = node.querySelector('[data-role=fill]');
-  const showPb = job.status==='downloading';
-  pb.style.display = showPb ? '' : 'none';
-  if(showPb){
-    const pct = (job.progress||0)+'%';
-    if(fill.style.width !== pct) fill.style.width = pct;
-    const isTorrent = job.type==='torrent';
-    fill.className = 'progress-fill'+(isTorrent?' torrent':'');
+  const pb   = node.querySelector('[data-r=pb]');
+  const fill = node.querySelector('[data-r=fill]');
+  const showPb = job.status === 'downloading';
+  if (pb.style.display !== (showPb ? '' : 'none')) pb.style.display = showPb ? '' : 'none';
+  if (showPb) {
+    const pct = (job.progress || 0) + '%';
+    if (fill.style.width !== pct) fill.style.width = pct;
+    const cls = 'progress-fill' + (job.type === 'torrent' ? ' torrent' : '');
+    if (fill.className !== cls) fill.className = cls;
   }
 
-  // buttons
-  const btns    = node.querySelector('[data-role=btns]');
-  const canPlay = job.status==='completed' && job.filename && (isVideo(job.filename)||isAudio(job.filename));
-  const canDl   = job.status==='completed' && job.filename;
-  // only regenerate buttons on status change (stored as data attr)
-  const prevStatus = node.dataset.status || '';
-  if(prevStatus !== job.status || node.dataset.filename !== (job.filename||'')){
-    node.dataset.status   = job.status;
-    node.dataset.filename = job.filename || '';
+  // buttons — only rebuild on status/filename change
+  const prevSig = node.dataset.sig || '';
+  const newSig  = job.status + '|' + (job.filename || '');
+  if (prevSig !== newSig) {
+    node.dataset.sig = newSig;
+    const btns = node.querySelector('[data-r=btns]');
     btns.innerHTML = '';
-    if(canDl){
+    if (job.status === 'completed' && job.filename) {
       const a = document.createElement('a');
-      a.href = '/api/files/'+encodeURIComponent(job.filename)+'?dl=1';
-      a.className = 'btn-sm'; a.download = job.filename;
-      a.textContent = '⬇️ Baixar';
+      a.href = '/api/files/' + encodeURIComponent(job.filename) + '?dl=1';
+      a.className = 'btn-sm'; a.download = job.filename; a.textContent = '⬇️ Baixar';
       btns.appendChild(a);
-    }
-    if(canPlay){
-      const b = document.createElement('button');
-      b.className = 'btn-green';
-      b.textContent = '▶ Reproduzir';
-      b.onclick = () => openPlayer(job.filename);
-      btns.appendChild(b);
+      if (isVideo(job.filename) || isAudio(job.filename)) {
+        const b = document.createElement('button');
+        b.className = 'btn-green'; b.textContent = '▶ Reproduzir';
+        b.onclick = () => openPlayer(job.filename);
+        btns.appendChild(b);
+      }
     }
     const del = document.createElement('button');
-    del.className = 'btn btn-danger';
-    del.textContent = '✕';
+    del.className = 'btn btn-danger'; del.textContent = '✕';
     del.onclick = () => deleteJob(job.id);
     btns.appendChild(del);
   }
 }
 
-async function deleteJob(id){
-  await fetch(API+'/api/jobs/'+id,{method:'DELETE'});
-  loadJobs();
+async function deleteJob(id) {
+  await fetch(API + '/api/jobs/' + id, {method:'DELETE'});
+  pollJobs();
 }
-async function clearCompleted(){
+async function clearCompleted() {
   await Promise.all(
-    jobsData.filter(j=>j.status==='completed'||j.status==='failed')
-            .map(j=>fetch(API+'/api/jobs/'+j.id,{method:'DELETE'}))
+    jobsData.filter(j => j.status==='completed'||j.status==='failed')
+            .map(j => fetch(API+'/api/jobs/'+j.id,{method:'DELETE'}))
   );
-  loadJobs();
+  pollJobs();
 }
 
-// ─── Files ────────────────────────────────────────────────────────────────────
-async function loadFiles(){
-  try{
-    const files = await fetch(API+'/api/files').then(r=>r.json());
+// ─ Files (user-triggered rebuild)
+async function loadFiles() {
+  try {
+    const files = await fetch(API + '/api/files').then(r => r.json());
     const grid  = document.getElementById('files-grid');
     const empty = document.getElementById('files-empty');
-    if(!files.length){ grid.style.display='none'; empty.style.display='block'; return; }
-    grid.style.display='grid'; empty.style.display='none';
-    // full rebuild acceptable here (user-triggered, not auto-polled)
-    grid.innerHTML = files.map(f=>{
-      const canPlay=f.is_video||f.is_audio;
-      const thumb=f.is_video
-        ?`<div class="file-thumb" onclick="openPlayer('${f.name}')">🎬<div class="play-btn">▶</div></div>`
-        :f.is_audio
-        ?`<div class="file-thumb" onclick="openPlayer('${f.name}')">🎵<div class="play-btn">▶</div></div>`
-        :`<div class="file-thumb" style="cursor:default">${fileIcon(f.name)}</div>`;
+    if (!files.length) { grid.style.display='none'; empty.style.display='block'; return; }
+    grid.style.display = 'grid'; empty.style.display = 'none';
+    grid.innerHTML = files.map(f => {
+      const canPlay = f.is_video || f.is_audio;
+      const thumb = f.is_video
+        ? `<div class="file-thumb" onclick="openPlayer('${f.name}')">🎬<div class="play-btn">▶</div></div>`
+        : f.is_audio
+        ? `<div class="file-thumb" onclick="openPlayer('${f.name}')">🎵<div class="play-btn">▶</div></div>`
+        : `<div class="file-thumb" style="cursor:default">${fileIcon(f.name)}</div>`;
       return `<div class="file-card">${thumb}
         <div class="file-info">
           <div class="file-info-name" title="${f.name}">${f.name}</div>
@@ -493,80 +468,69 @@ async function loadFiles(){
           </div>
         </div></div>`;
     }).join('');
-  }catch{}
+  } catch {}
 }
-async function deleteFile(name){
-  if(!confirm(`Excluir "${name}"?`)) return;
-  await fetch(API+'/api/files/'+encodeURIComponent(name),{method:'DELETE'});
-  loadFiles();
-  toast('Arquivo excluído','success');
-}
-
-// ─── Stats ────────────────────────────────────────────────────────────────────
-async function updateStats(){
-  setText('stat-total',  String(jobsData.length));
-  setText('stat-active', String(jobsData.filter(j=>j.status==='downloading'||j.status==='pending').length));
-  try{
-    const files=await fetch(API+'/api/files').then(r=>r.json());
-    setText('stat-files', String(files.length));
-    const tb=files.reduce((s,f)=>s+f.size,0);
-    setText('stat-size', humanSize(tb));
-  }catch{}
+async function deleteFile(name) {
+  if (!confirm(`Excluir "${name}"?`)) return;
+  await fetch(API + '/api/files/' + encodeURIComponent(name), {method:'DELETE'});
+  loadFiles(); toast('Arquivo excluído', 'success');
 }
 
-// ─── Player ───────────────────────────────────────────────────────────────────
-function openPlayer(filename){
-  const url=API+'/api/files/'+encodeURIComponent(filename);
-  document.getElementById('player-title').textContent=filename;
-  document.getElementById('player-dl-link').href=url+'?dl=1';
-  document.getElementById('player-dl-link').download=filename;
-  if(isVideo(filename)){
-    document.getElementById('player-video-wrap').style.display='block';
-    document.getElementById('player-audio-wrap').style.display='none';
-    const v=document.getElementById('player-video'); v.src=url; v.load();
+// ─ Player
+function openPlayer(filename) {
+  const url = API + '/api/files/' + encodeURIComponent(filename);
+  document.getElementById('player-title').textContent = filename;
+  document.getElementById('player-dl-link').href     = url + '?dl=1';
+  document.getElementById('player-dl-link').download  = filename;
+  if (isVideo(filename)) {
+    document.getElementById('player-video-wrap').style.display = 'block';
+    document.getElementById('player-audio-wrap').style.display = 'none';
+    const v = document.getElementById('player-video'); v.src = url; v.load();
   } else {
-    document.getElementById('player-video-wrap').style.display='none';
-    document.getElementById('player-audio-wrap').style.display='flex';
-    const a=document.getElementById('player-audio'); a.src=url; a.load();
+    document.getElementById('player-video-wrap').style.display = 'none';
+    document.getElementById('player-audio-wrap').style.display = 'flex';
+    const a = document.getElementById('player-audio'); a.src = url; a.load();
   }
   document.getElementById('player-modal').classList.add('open');
-  document.body.style.overflow='hidden';
+  document.body.style.overflow = 'hidden';
 }
-function closePlayer(){
+function closePlayer() {
   document.getElementById('player-modal').classList.remove('open');
-  const v=document.getElementById('player-video'); v.pause(); v.src='';
-  const a=document.getElementById('player-audio'); a.pause(); a.src='';
-  document.body.style.overflow='';
+  const v = document.getElementById('player-video'); v.pause(); v.src = '';
+  const a = document.getElementById('player-audio'); a.pause(); a.src = '';
+  document.body.style.overflow = '';
 }
-document.getElementById('player-modal').addEventListener('click',function(e){ if(e.target===this) closePlayer(); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') closePlayer(); });
+document.getElementById('player-modal').addEventListener('click', function(e) { if (e.target === this) closePlayer(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
 
-// ─── Upload ───────────────────────────────────────────────────────────────────
-async function uploadFiles(files){
-  if(!files.length) return;
-  const form=new FormData();
-  for(const f of files) form.append('file',f);
-  const prog=document.getElementById('upload-progress');
-  const fill=document.getElementById('upload-fill');
-  const status=document.getElementById('upload-status');
-  prog.style.display='block'; fill.style.width='30%';
-  status.textContent=`Enviando ${files.length} arquivo(s)…`;
-  try{
-    const data=await fetch(API+'/api/upload',{method:'POST',body:form}).then(r=>r.json());
-    fill.style.width='100%';
-    status.textContent=`✓ ${data.uploaded.length} arquivo(s) enviado(s)`;
-    toast(`${data.uploaded.length} arquivo(s) enviado(s)`,'success');
-    setTimeout(()=>{ prog.style.display='none'; fill.style.width='0%'; },2000);
-  }catch(e){ status.textContent='Erro: '+e.message; toast('Falha no upload','error'); }
+// ─ Upload
+async function uploadFiles(files) {
+  if (!files.length) return;
+  const form = new FormData();
+  for (const f of files) form.append('file', f);
+  const prog = document.getElementById('upload-progress');
+  const fill = document.getElementById('upload-fill');
+  const stat = document.getElementById('upload-status');
+  prog.style.display = 'block'; fill.style.width = '30%';
+  stat.textContent = `Enviando ${files.length} arquivo(s)…`;
+  try {
+    const data = await fetch(API + '/api/upload', {method:'POST', body:form}).then(r => r.json());
+    fill.style.width = '100%';
+    stat.textContent = `✓ ${data.uploaded.length} arquivo(s) enviado(s)`;
+    toast(`${data.uploaded.length} arquivo(s) enviado(s)`, 'success');
+    setTimeout(() => { prog.style.display='none'; fill.style.width='0%'; }, 2000);
+  } catch(e) { stat.textContent = 'Erro: ' + e.message; toast('Falha no upload', 'error'); }
 }
-const dz=document.getElementById('dropzone');
-dz.addEventListener('dragover',e=>{ e.preventDefault(); dz.classList.add('dragover'); });
-dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
-dz.addEventListener('drop',e=>{ e.preventDefault(); dz.classList.remove('dragover'); uploadFiles(e.dataTransfer.files); });
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); uploadFiles(e.dataTransfer.files); });
 
-// ─── Boot ─────────────────────────────────────────────────────────────────────
-loadJobs();
-setInterval(loadJobs, 2000);
+// ─ Boot: two independent timers
+pollJobs();
+pollFileStats();
+setInterval(pollJobs,      2000);   // fast: job queue only
+setInterval(pollFileStats, 10000);  // slow: file sizes (no flicker source)
 </script>
 </body>
 </html>

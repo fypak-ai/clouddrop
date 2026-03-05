@@ -21,6 +21,63 @@ try:
 except ImportError:
     HAS_LT = False
 
+# Public trackers injected into every magnet to maximise peers
+PUBLIC_TRACKERS = [
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.tracker.cl:1337/announce",
+    "udp://tracker.openbittorrent.com:6969/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://explodie.org:6969/announce",
+    "udp://tracker.bt4g.com:2095/announce",
+    "udp://opentracker.io:6969/announce",
+    "udp://exodus.desync.com:6969/announce",
+    "https://tracker.tamersunion.org:443/announce",
+]
+
+def _make_lt_session():
+    """Create a libtorrent session optimised for speed."""
+    ses = lt.session()
+    ses.listen_on(6881, 6891)
+
+    settings = {
+        # protocol extensions
+        "enable_dht": True,
+        "enable_lsd": True,
+        "enable_upnp": True,
+        "enable_natpmp": True,
+        # connection limits
+        "connections_limit": 300,
+        "connection_speed": 50,
+        "num_want": 200,
+        # unchoke / upload
+        "unchoke_slots_limit": 8,
+        # request pipeline
+        "request_queue_time": 3,
+        "max_out_request_queue": 1500,
+        # pieces
+        "piece_timeout": 20,
+        # misc
+        "announce_to_all_trackers": True,
+        "announce_to_all_tiers": True,
+    }
+    try:
+        ses.apply_settings(settings)
+    except Exception:
+        pass  # older libtorrent versions may not support all keys
+
+    try:
+        ses.add_dht_router("router.bittorrent.com", 6881)
+        ses.add_dht_router("router.utorrent.com", 6881)
+        ses.add_dht_router("dht.transmissionbt.com", 6881)
+        ses.start_dht()
+        ses.start_lsd()
+        ses.start_upnp()
+        ses.start_natpmp()
+    except Exception:
+        pass
+
+    return ses
+
 
 def human_size(b):
     for unit in ["B", "KB", "MB", "GB", "TB"]:
@@ -84,38 +141,70 @@ def download_http(job_id, url, filename):
         jobs[job_id].update({"status": "failed", "error": str(e)})
 
 
+def _inject_trackers(magnet_url: str) -> str:
+    """Append public trackers to the magnet URI."""
+    for t in PUBLIC_TRACKERS:
+        encoded = requests.utils.quote(t, safe="")
+        if encoded not in magnet_url:
+            magnet_url += f"&tr={encoded}"
+    return magnet_url
+
+
 def download_torrent(job_id, magnet_url):
     if not HAS_LT:
-        jobs[job_id].update({"status": "failed", "error": "libtorrent nao instalado. Execute: pip install libtorrent"})
+        jobs[job_id].update({"status": "failed",
+                              "error": "libtorrent nao instalado. Execute: pip install libtorrent"})
         return
+
     jobs[job_id]["status"] = "downloading"
     try:
-        ses = lt.session()
-        ses.listen_on(6881, 6891)
-        params = {
-            "save_path": str(UPLOAD_DIR),
-            "storage_mode": lt.storage_mode_t.storage_mode_sparse,
-        }
-        handle = lt.add_magnet_uri(ses, magnet_url, params)
-        jobs[job_id]["info"] = "Aguardando metadados do torrent..."
-        for _ in range(120):
+        magnet_url = _inject_trackers(magnet_url)
+        ses = _make_lt_session()
+
+        params = lt.add_torrent_params()
+        params.url = magnet_url
+        params.save_path = str(UPLOAD_DIR)
+        params.storage_mode = lt.storage_mode_t.storage_mode_sparse
+        handle = ses.add_torrent(params)
+
+        jobs[job_id]["info"] = "Aguardando metadados (DHT/trackers)..."
+
+        # Wait for metadata — up to 90s
+        for _ in range(180):
             if handle.has_metadata():
                 break
             time.sleep(0.5)
+
         if not handle.has_metadata():
-            jobs[job_id].update({"status": "failed", "error": "Timeout aguardando metadados"})
+            jobs[job_id].update({"status": "failed",
+                                  "error": "Timeout aguardando metadados (sem peers/trackers)"})
             return
+
+        # Force re-announce to all trackers immediately
+        try:
+            handle.force_reannounce()
+            handle.force_dht_announce()
+        except Exception:
+            pass
+
         torrent_info = handle.get_torrent_info()
         name = torrent_info.name()
         jobs[job_id]["filename"] = name
         jobs[job_id]["info"] = f"Baixando: {name}"
+
         while True:
             s = handle.status()
             progress = round(s.progress * 100, 1)
+            dl_rate = s.download_rate
             jobs[job_id]["progress"] = progress
             jobs[job_id]["downloaded"] = int(s.total_done)
-            jobs[job_id]["speed"] = f"{round(s.download_rate/1024, 1)} KB/s"
+            jobs[job_id]["speed"] = (
+                f"{dl_rate/1024/1024:.1f} MB/s" if dl_rate >= 1_000_000
+                else f"{dl_rate/1024:.1f} KB/s"
+            )
             jobs[job_id]["peers"] = s.num_peers
+            jobs[job_id]["seeds"] = s.num_seeds
+
             if s.is_seeding or progress >= 100:
                 break
             if jobs[job_id].get("_cancel"):
@@ -123,11 +212,15 @@ def download_torrent(job_id, magnet_url):
                 jobs[job_id].update({"status": "failed", "error": "Cancelado"})
                 return
             time.sleep(1)
+
         dest = UPLOAD_DIR / name
         _job_done(job_id, dest)
+
     except Exception as e:
         jobs[job_id].update({"status": "failed", "error": str(e)})
 
+
+# ── Routes ──────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -146,8 +239,8 @@ def remote_download():
     jobs[job_id] = {
         "id": job_id, "url": url, "filename": filename or None,
         "type": dtype, "status": "pending", "progress": 0,
-        "downloaded": 0, "size": 0, "size_human": "\u2014",
-        "error": None, "speed": None, "peers": None,
+        "downloaded": 0, "size": 0, "size_human": "—",
+        "error": None, "speed": None, "peers": None, "seeds": None,
         "created_at": time.time(),
     }
     if dtype == "torrent":
@@ -265,6 +358,7 @@ def api_status():
         "libtorrent": HAS_LT,
         "libtorrent_version": str(lt.version) if HAS_LT else None,
         "files_count": sum(1 for f in UPLOAD_DIR.iterdir() if f.is_file()),
+        "public_trackers": len(PUBLIC_TRACKERS),
     })
 
 
