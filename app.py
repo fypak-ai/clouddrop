@@ -34,36 +34,31 @@ PUBLIC_TRACKERS = [
     "https://tracker.tamersunion.org:443/announce",
 ]
 
+
 def _make_lt_session():
     """Create a libtorrent session optimised for speed."""
     ses = lt.session()
     ses.listen_on(6881, 6891)
 
     settings = {
-        # protocol extensions
         "enable_dht": True,
         "enable_lsd": True,
         "enable_upnp": True,
         "enable_natpmp": True,
-        # connection limits
         "connections_limit": 300,
         "connection_speed": 50,
         "num_want": 200,
-        # unchoke / upload
         "unchoke_slots_limit": 8,
-        # request pipeline
         "request_queue_time": 3,
         "max_out_request_queue": 1500,
-        # pieces
         "piece_timeout": 20,
-        # misc
         "announce_to_all_trackers": True,
         "announce_to_all_tiers": True,
     }
     try:
         ses.apply_settings(settings)
     except Exception:
-        pass  # older libtorrent versions may not support all keys
+        pass
 
     try:
         ses.add_dht_router("router.bittorrent.com", 6881)
@@ -100,7 +95,13 @@ def _unique_path(path: Path) -> Path:
 
 
 def _job_done(job_id, dest: Path):
-    if dest.exists():
+    """Mark job as completed. Handles single-file AND multi-file (folder) torrents."""
+    if not dest.exists():
+        jobs[job_id].update({"status": "completed", "progress": 100})
+        return
+
+    if dest.is_file():
+        # Single-file torrent or HTTP download
         size = dest.stat().st_size
         jobs[job_id].update({
             "status": "completed",
@@ -110,7 +111,36 @@ def _job_done(job_id, dest: Path):
             "progress": 100,
         })
     else:
-        jobs[job_id].update({"status": "completed", "progress": 100})
+        # Multi-file torrent saved as a folder
+        all_files = [p for p in dest.rglob("*") if p.is_file()]
+        if not all_files:
+            jobs[job_id].update({"status": "completed", "progress": 100})
+            return
+
+        all_files.sort(key=lambda p: p.stat().st_size, reverse=True)
+        main_file = all_files[0]
+        total_size = sum(p.stat().st_size for p in all_files)
+
+        # Relative paths so frontend can request /api/files/<rel>
+        file_list = [
+            {
+                "name": str(p.relative_to(UPLOAD_DIR)),
+                "size": p.stat().st_size,
+                "size_human": human_size(p.stat().st_size),
+            }
+            for p in all_files
+        ]
+
+        jobs[job_id].update({
+            "status": "completed",
+            # filename = largest file (triggers frontend detection)
+            "filename": str(main_file.relative_to(UPLOAD_DIR)),
+            "folder": dest.name,
+            "files": file_list,
+            "size": total_size,
+            "size_human": human_size(total_size),
+            "progress": 100,
+        })
 
 
 def download_http(job_id, url, filename):
@@ -169,7 +199,6 @@ def download_torrent(job_id, magnet_url):
 
         jobs[job_id]["info"] = "Aguardando metadados (DHT/trackers)..."
 
-        # Wait for metadata — up to 90s
         for _ in range(180):
             if handle.has_metadata():
                 break
@@ -180,7 +209,6 @@ def download_torrent(job_id, magnet_url):
                                   "error": "Timeout aguardando metadados (sem peers/trackers)"})
             return
 
-        # Force re-announce to all trackers immediately
         try:
             handle.force_reannounce()
             handle.force_dht_announce()
@@ -220,7 +248,7 @@ def download_torrent(job_id, magnet_url):
         jobs[job_id].update({"status": "failed", "error": str(e)})
 
 
-# ── Routes ──────────────────────────────────────────────────────
+# Routes
 
 @app.route("/")
 def index():
@@ -233,13 +261,13 @@ def remote_download():
     url = (data.get("url") or "").strip()
     filename = (data.get("filename") or "").strip()
     if not url:
-        return jsonify({"error": "URL é obrigatória"}), 400
+        return jsonify({"error": "URL e obrigatoria"}), 400
     job_id = str(uuid.uuid4())
     dtype = "torrent" if is_magnet(url) else "http"
     jobs[job_id] = {
         "id": job_id, "url": url, "filename": filename or None,
         "type": dtype, "status": "pending", "progress": 0,
-        "downloaded": 0, "size": 0, "size_human": "—",
+        "downloaded": 0, "size": 0, "size_human": "--",
         "error": None, "speed": None, "peers": None, "seeds": None,
         "created_at": time.time(),
     }
@@ -266,21 +294,31 @@ def delete_job(job_id):
     job = jobs.pop(job_id, None)
     if not job:
         return jsonify({"error": "Not found"}), 404
-    if job.get("filename"):
-        p = UPLOAD_DIR / job["filename"]
-        if p.exists(): p.unlink(missing_ok=True)
+    target = job.get("folder") or job.get("filename")
+    if target:
+        p = UPLOAD_DIR / target.split("/")[0]
+        if p.is_file():
+            p.unlink(missing_ok=True)
+        elif p.is_dir():
+            import shutil
+            shutil.rmtree(p, ignore_errors=True)
     return jsonify({"ok": True})
 
 
 @app.route("/api/files", methods=["GET"])
 def list_files():
+    """List all files recursively (includes files inside torrent sub-folders)."""
     files = []
-    for f in sorted(UPLOAD_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+    for f in sorted(UPLOAD_DIR.rglob("*"),
+                    key=lambda x: x.stat().st_mtime if x.is_file() else 0,
+                    reverse=True):
         if f.is_file():
             st = f.stat()
             ext = f.suffix.lower()
+            rel = str(f.relative_to(UPLOAD_DIR))
             files.append({
-                "name": f.name, "size": st.st_size,
+                "name": rel,
+                "size": st.st_size,
                 "size_human": human_size(st.st_size),
                 "modified": st.st_mtime,
                 "is_video": ext in {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"},
@@ -302,7 +340,9 @@ def _mime(suffix):
 
 @app.route("/api/files/<path:filename>", methods=["GET"])
 def serve_file(filename):
-    path = UPLOAD_DIR / filename
+    path = (UPLOAD_DIR / filename).resolve()
+    if not str(path).startswith(str(UPLOAD_DIR.resolve())):
+        abort(403)
     if not path.exists() or not path.is_file():
         abort(404)
     range_header = request.headers.get("Range")
@@ -326,12 +366,19 @@ def serve_file(filename):
 
 @app.route("/api/files/<path:filename>", methods=["DELETE"])
 def delete_file(filename):
-    path = UPLOAD_DIR / filename
+    path = (UPLOAD_DIR / filename).resolve()
+    if not str(path).startswith(str(UPLOAD_DIR.resolve())):
+        abort(403)
     if not path.exists():
         return jsonify({"error": "Not found"}), 404
-    path.unlink()
+    if path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        import shutil
+        shutil.rmtree(path)
     for jid, job in list(jobs.items()):
-        if job.get("filename") == filename:
+        jf = job.get("folder") or job.get("filename") or ""
+        if jf == filename or jf.startswith(filename + "/") or jf.startswith(filename + os.sep):
             jobs.pop(jid, None)
     return jsonify({"ok": True})
 
@@ -357,7 +404,7 @@ def api_status():
     return jsonify({
         "libtorrent": HAS_LT,
         "libtorrent_version": str(lt.version) if HAS_LT else None,
-        "files_count": sum(1 for f in UPLOAD_DIR.iterdir() if f.is_file()),
+        "files_count": sum(1 for f in UPLOAD_DIR.rglob("*") if f.is_file()),
         "public_trackers": len(PUBLIC_TRACKERS),
     })
 
