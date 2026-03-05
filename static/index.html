@@ -354,34 +354,53 @@ async function loadFiles() {
   renderFilesGrid(cachedFiles);
 }
 
+function fileUrl(relPath) {
+  return '/api/files/' + relPath.split('/').map(encodeURIComponent).join('/');
+}
+function fileBasename(relPath) {
+  return relPath.split('/').pop();
+}
+function fileDirname(relPath) {
+  const parts = relPath.split('/');
+  return parts.length > 1 ? parts.slice(0, -1).join('/') : null;
+}
+
 function renderFilesGrid(files) {
   const grid  = document.getElementById('files-grid');
   const empty = document.getElementById('files-empty');
   if (!files.length) { grid.style.display = 'none'; empty.style.display = 'block'; return; }
   grid.style.display = 'grid'; empty.style.display = 'none';
   grid.innerHTML = files.map(f => {
+    const name    = fileBasename(f.name);
+    const folder  = fileDirname(f.name);
+    const url     = fileUrl(f.name);
     const canPlay = f.is_video || f.is_audio;
     const thumb = f.is_video
       ? `<div class="file-thumb" onclick="openPlayer('${f.name}')">🎬<div class="play-btn">▶</div></div>`
       : f.is_audio
       ? `<div class="file-thumb" onclick="openPlayer('${f.name}')">🎵<div class="play-btn">▶</div></div>`
-      : `<div class="file-thumb" style="cursor:default">${fileIcon(f.name)}</div>`;
+      : `<div class="file-thumb" style="cursor:default">${fileIcon(name)}</div>`;
+    const folderBadge = folder
+      ? `<div style="font-size:10px;color:var(--muted);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${folder}">📁 ${folder}</div>`
+      : '';
     return `<div class="file-card">${thumb}
       <div class="file-info">
-        <div class="file-info-name" title="${f.name}">${f.name}</div>
+        ${folderBadge}
+        <div class="file-info-name" title="${f.name}">${name}</div>
         <div class="file-info-size">${f.size_human}</div>
         <div class="file-actions">
           ${canPlay ? `<button class="btn-green" onclick="openPlayer('${f.name}')">&#x25B6; Play</button>` : ''}
-          <a href="/api/files/${encodeURIComponent(f.name)}?dl=1" class="btn-sm" download>⬇️</a>
+          <a href="${url}?dl=1" class="btn-sm" download="${name}">⬇️</a>
           <button class="btn btn-danger" onclick="deleteFile('${f.name}')">&#x1F5D1;</button>
         </div>
       </div></div>`;
   }).join('');
 }
 
+
 async function deleteFile(name) {
   if (!confirm(`Excluir "${name}"?`)) return;
-  await fetch(API + '/api/files/' + encodeURIComponent(name), {method:'DELETE'});
+  await fetch(API + fileUrl(name), {method:'DELETE'});
   await loadFiles();
   toast('Arquivo excluído', 'success');
 }
@@ -509,15 +528,15 @@ function patchJobNode(node, job) {
   }
 
   const prevSig = node.dataset.sig || '';
-  const newSig  = job.status + '|' + (job.filename || '');
+  const newSig  = job.status;
   if (prevSig !== newSig) {
     node.dataset.sig = newSig;
     const btns = node.querySelector('[data-r=btns]');
     btns.innerHTML = '';
     if (job.status === 'completed' && job.filename) {
       const a = document.createElement('a');
-      a.href = '/api/files/' + encodeURIComponent(job.filename) + '?dl=1';
-      a.className = 'btn-sm'; a.download = job.filename; a.textContent = '⬇️ Baixar';
+      a.href = fileUrl(job.filename) + '?dl=1';
+      a.className = 'btn-sm'; a.download = fileBasename(job.filename); a.textContent = '⬇️ Baixar';
       btns.appendChild(a);
       if (isVideo(job.filename) || isAudio(job.filename)) {
         const b = document.createElement('button');
@@ -532,6 +551,7 @@ function patchJobNode(node, job) {
     btns.appendChild(del);
   }
 }
+
 
 async function deleteJob(id) {
   await fetch(API + '/api/jobs/' + id, {method:'DELETE'});
@@ -548,7 +568,7 @@ async function clearCompleted() {
 
 // ─ Player
 function openPlayer(filename) {
-  const url = API + '/api/files/' + encodeURIComponent(filename);
+  const url = API + fileUrl(filename);
   document.getElementById('player-title').textContent = filename;
   document.getElementById('player-dl-link').href     = url + '?dl=1';
   document.getElementById('player-dl-link').download  = filename;
