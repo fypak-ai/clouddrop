@@ -656,20 +656,21 @@ class _TorrentSource(_ABC):
         return m
 
     def search_sync(self, query: str, category: str, limit: int) -> _List[_Dict]:
-        """Run async search in a fresh event loop (safe inside a thread)"""
+        """Run async search in a fresh event loop (safe inside a thread).
+        NOTE: TCPConnector must be created INSIDE the coroutine — creating it
+        outside raises RuntimeError('no running event loop') in aiohttp 3.10+."""
         loop = _asyncio.new_event_loop()
         try:
-            _asyncio.set_event_loop(loop)
-            timeout = _aiohttp.ClientTimeout(total=12)
-            connector = _aiohttp.TCPConnector(ssl=False)
             async def _run():
+                connector = _aiohttp.TCPConnector(ssl=False)
+                timeout = _aiohttp.ClientTimeout(total=12)
                 async with _aiohttp.ClientSession(
                     connector=connector, headers=_SEARCH_HEADERS,
                     timeout=timeout
                 ) as session:
                     return await self.search(session, query, category, limit)
             return loop.run_until_complete(_run())
-        except Exception as e:
+        except Exception:
             return []
         finally:
             try:

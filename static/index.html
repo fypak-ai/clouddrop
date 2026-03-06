@@ -272,6 +272,9 @@
   <div id="search-results"></div>
 </div>
 
+<!-- folder-modal -->
+<div id="fm" onclick="if(event.target===this)cFM()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;overflow-y:auto;padding:30px 16px"><div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;max-width:680px;margin:auto;overflow:hidden"><div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)"><span id="fmTitle" style="font-weight:600;font-size:15px"></span><button onclick="cFM()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px">&#x2715;</button></div><div id="fmList" style="padding:8px 16px 16px;max-height:72vh;overflow-y:auto"></div></div></div>
+
 <script>
 const API = '';
 
@@ -478,13 +481,14 @@ function renderFilesGrid(files) {
       }).join('');
 
       const moreLabel = f.children.length > 5
-        ? '<div style="font-size:10px;color:var(--muted);text-align:right;margin-top:2px">+' + (f.children.length - 5) + ' mais arquivos</div>'
+        ? '<div style="margin-top:4px"><button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="openFolderModal(\'' + encodeURIComponent(f.name) + '\')">&#x1F4C2; Ver todos (' + f.children.length + ' arquivos)</button></div>'
         : '';
       const playBtn = canPlay
         ? '<button class="btn-green" data-play="' + encodeURIComponent(f.main_file) + '">&#x25B6; Play</button>'
         : '';
       const delBtn = '<button class="btn btn-danger" data-del="' + encodeURIComponent(f.name) + '">&#x1F5D1; Excluir pasta</button>';
 
+      window._fc = window._fc || {}; window._fc[f.name] = f.children;
       return '<div class="file-card" style="grid-column:1/-1"  data-fname="' + encodeURIComponent(f.name) + '">'
         + '<label class="sel-checkbox" title="Selecionar"><input type="checkbox" class="file-sel-cb" data-fname="' + encodeURIComponent(f.name) + '"></label>'
         + '<div style="display:flex;gap:12px;align-items:flex-start">'
@@ -523,6 +527,8 @@ function renderFilesGrid(files) {
 
 // Delegated event handler for files-grid (handles play + delete via data-* attrs)
 // Delegated listeners on document — safe regardless of when files-grid renders
+function oFM(n){var ch=(window._fc||{})[decodeURIComponent(n)];if(!ch)return;document.getElementById('fmTitle').textContent='📂 '+decodeURIComponent(n)+' ('+ch.length+' arquivos)';var l=document.getElementById('fmList');l.innerHTML=ch.map(function(c){var b=fileBasename(c.name),u=API+fileUrl(c.name),cp=c.is_video||c.is_audio;var pb=cp?'<button onclick="cFM();setTimeout(function(){openPlayer(\'' + encodeURIComponent(c.name) + '\')},50)" style="background:#238636;color:#fff;border:none;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px;flex-shrink:0">&#x25B6;</button>':'';return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'+'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px;color:var(--text)" title="'+escHtml(c.name)+'">'+escHtml(b)+'</span>'+'<span style="color:var(--muted);font-size:11px;flex-shrink:0">'+c.size_human+'</span>'+'<a href="'+u+'?dl=1" download="'+escHtml(b)+'" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:3px 6px;text-decoration:none;font-size:11px;flex-shrink:0">&#x2B07;&#xFE0F;</a>'+pb+'</div>';}).join('');document.getElementById('fm').style.display='block';}function cFM(){document.getElementById('fm').style.display='none';}function openFolderModal(n){oFM(n);}function closeFolderModal(){cFM();}
+
 document.addEventListener('click', function(e) {
   const grid = e.target.closest('#files-grid');
   if (!grid) return;
