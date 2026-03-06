@@ -450,10 +450,15 @@ function fileDirname(relPath) {
   return parts.length > 1 ? parts.slice(0, -1).join('/') : null;
 }
 
+let _lastFilesHash = '';
 function renderFilesGrid(files) {
   const grid  = document.getElementById('files-grid');
   const empty = document.getElementById('files-empty');
-  if (!files.length) { grid.style.display = 'none'; empty.style.display = 'block'; return; }
+  if (!files.length) { grid.style.display = 'none'; empty.style.display = 'block'; _lastFilesHash = ''; return; }
+  // Skip re-render if data hasn't changed (prevents flash on 15s poll)
+  const newHash = JSON.stringify(files.map(f => f.name + '|' + f.size));
+  if (newHash === _lastFilesHash) return;
+  _lastFilesHash = newHash;
   grid.style.display = 'grid'; empty.style.display = 'none';
 
   grid.innerHTML = files.map(function(f) {
