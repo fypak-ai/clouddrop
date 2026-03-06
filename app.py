@@ -1204,13 +1204,24 @@ def _run_search(enabled_sources, query, category, limit):
     results = []
     with _ThreadPoolExecutor(max_workers=len(enabled_sources)) as ex:
         futures = {ex.submit(s.search_sync, query, category, limit): s for s in enabled_sources}
-        for fut in _as_completed(futures, timeout=15):
-            try:
-                r = fut.result()
-                if isinstance(r, list):
-                    results.extend(r)
-            except Exception:
-                pass
+        try:
+            for fut in _as_completed(futures, timeout=20):
+                try:
+                    r = fut.result()
+                    if isinstance(r, list):
+                        results.extend(r)
+                except Exception:
+                    pass
+        except Exception:
+            # TimeoutError or other — collect results already done
+            for fut in futures:
+                if fut.done():
+                    try:
+                        r = fut.result()
+                        if isinstance(r, list):
+                            results.extend(r)
+                    except Exception:
+                        pass
     results.sort(key=lambda x: x.get("seeders", 0), reverse=True)
     return results
 
@@ -1228,7 +1239,10 @@ def api_search():
     enabled = _SEARCH_SOURCES if sources_param == "all" else [
         s for s in _SEARCH_SOURCES if s.id in sources_param.split(",")
     ]
-    results = _run_search(enabled, query, category, limit)
+    try:
+        results = _run_search(enabled, query, category, limit)
+    except Exception as e:
+        return jsonify({"error": "search failed: " + str(e), "results": []}), 500
     return jsonify({
         "query": query,
         "total": len(results),
