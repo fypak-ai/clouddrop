@@ -91,13 +91,8 @@ def _make_lt_session():
     except Exception:
         pass
 
-    try:
-        # DHT disabled (Railway blocks UDP) — usando HTTP trackers apenas
-        ses.start_lsd()
-        ses.start_upnp()
-        ses.start_natpmp()
-    except Exception:
-        pass
+    # LSD/UPnP/NAT-PMP disabled — all use UDP/multicast, Railway blocks them
+    # HTTP trackers only — already configured in settings above
 
     return ses
 
@@ -200,12 +195,39 @@ def download_http(job_id, url, filename):
 
 
 def _inject_trackers(magnet_url: str) -> str:
-    """Append public trackers to the magnet URI."""
+    """Strip UDP trackers (Railway blocks UDP) and inject HTTP/HTTPS-only public trackers."""
+    # Remove all existing &tr= params that are UDP — Railway blocks outbound UDP
+    # Split magnet into base + tracker params
+    if "?" not in magnet_url:
+        return magnet_url
+
+    base_and_params = magnet_url.split("?", 1)
+    base = base_and_params[0] + "?"
+    params = base_and_params[1]
+
+    # Rebuild params: keep non-tr params + only HTTP/HTTPS tr params
+    kept_parts = []
+    for part in params.split("&"):
+        if not part.startswith("tr="):
+            kept_parts.append(part)
+        else:
+            # Decode the tracker URL to check protocol
+            tracker_raw = requests.utils.unquote(part[3:])
+            if tracker_raw.startswith("http://") or tracker_raw.startswith("https://"):
+                kept_parts.append(part)
+            # else: drop UDP tracker silently
+
+    # Add our public HTTP/HTTPS trackers (avoid duplicates)
+    existing_trackers = set()
+    for part in kept_parts:
+        if part.startswith("tr="):
+            existing_trackers.add(requests.utils.unquote(part[3:]))
+
     for t in PUBLIC_TRACKERS:
-        encoded = requests.utils.quote(t, safe="")
-        if encoded not in magnet_url:
-            magnet_url += f"&tr={encoded}"
-    return magnet_url
+        if t not in existing_trackers:
+            kept_parts.append("tr=" + requests.utils.quote(t, safe=""))
+
+    return base + "&".join(kept_parts)
 
 
 def download_torrent(job_id, magnet_url):
