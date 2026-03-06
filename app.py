@@ -498,10 +498,29 @@ def transcode_file(filename):
         return serve_file(filename)
     ext = path.suffix.lower()
     if ext in {".mkv", ".mp4", ".mov", ".m4v"}:
-        # Remux: copy video stream as-is, transcode audio to AAC for browser compat
+        # Detect video codec to decide if re-encode is needed
+        # Browsers support H.264 universally; H.265/HEVC requires re-encode
+        import json as _json
+        probe = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", "-select_streams", "v:0", str(path)],
+            capture_output=True, text=True
+        )
+        vcodec = "unknown"
+        try:
+            streams = _json.loads(probe.stdout).get("streams", [])
+            vcodec = streams[0].get("codec_name", "unknown") if streams else "unknown"
+        except Exception:
+            pass
+        # H.265/HEVC and AV1 need re-encode; H.264 can be copied
+        needs_reencode = vcodec in ("hevc", "av1", "vp9", "mpeg2video", "mpeg4")
         cmd = [
             "ffmpeg", "-i", str(path),
-            "-c:v", "copy",
+            "-c:v", "libx264" if needs_reencode else "copy",
+        ]
+        if needs_reencode:
+            cmd += ["-preset", "veryfast", "-crf", "23"]
+        cmd += [
             "-c:a", "aac", "-b:a", "192k",
             "-movflags", "frag_keyframe+empty_moov+default_base_moof",
             "-f", "mp4", "-"
