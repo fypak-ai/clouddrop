@@ -659,7 +659,7 @@ class _TorrentSource(_ABC):
         """Run async search in a fresh event loop (safe inside a thread)"""
         loop = _asyncio.new_event_loop()
         try:
-            connector = _aiohttp.TCPConnector(ssl=False, loop=loop)
+            connector = _aiohttp.TCPConnector(ssl=False)
             async def _run():
                 async with _aiohttp.ClientSession(
                     connector=connector, headers=_SEARCH_HEADERS
