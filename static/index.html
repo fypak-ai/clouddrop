@@ -897,7 +897,9 @@ let _searchSources = [];
 
 async function initSearch() {
   try {
-    const data = await fetch(API + '/api/search/sources').then(r => r.json());
+    const _r = await fetch(API + '/api/search/sources');
+    if (!_r.ok) throw new Error('sources ' + _r.status);
+    const data = await _r.json();
     _searchSources = data;
     const filters = document.getElementById('search-filters');
     data.forEach(s => {
@@ -912,6 +914,7 @@ async function initSearch() {
     });
   } catch(e) {
     console.warn('Search sources failed:', e);
+    setTimeout(initSearch, 2000);
   }
 }
 
@@ -935,7 +938,9 @@ async function doSearch() {
 
   try {
     const params = new URLSearchParams({ q, category, sources, limit: 50 });
-    const data = await fetch(API + '/api/search?' + params).then(r => r.json());
+    const res = await fetch(API + '/api/search?' + params);
+    if (!res.ok) throw new Error('Servidor retornou ' + res.status);
+    const data = await res.json();
     spinner.style.display = 'none';
 
     if (!data.results || data.results.length === 0) {
