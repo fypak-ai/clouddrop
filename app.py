@@ -659,17 +659,23 @@ class _TorrentSource(_ABC):
         """Run async search in a fresh event loop (safe inside a thread)"""
         loop = _asyncio.new_event_loop()
         try:
+            _asyncio.set_event_loop(loop)
+            timeout = _aiohttp.ClientTimeout(total=12)
             connector = _aiohttp.TCPConnector(ssl=False)
             async def _run():
                 async with _aiohttp.ClientSession(
-                    connector=connector, headers=_SEARCH_HEADERS
+                    connector=connector, headers=_SEARCH_HEADERS,
+                    timeout=timeout
                 ) as session:
                     return await self.search(session, query, category, limit)
             return loop.run_until_complete(_run())
         except Exception as e:
             return []
         finally:
-            loop.close()
+            try:
+                loop.close()
+            except Exception:
+                pass
 
 
 # ── sources/yts.py ──
