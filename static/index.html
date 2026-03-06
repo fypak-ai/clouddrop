@@ -537,6 +537,12 @@ document.addEventListener('click', function(e) {
   if (playEl) { openPlayer(decodeURIComponent(playEl.dataset.play)); }
   if (delEl)  { deleteFile(decodeURIComponent(delEl.dataset.del)); }
 });
+document.addEventListener('click', function(e) {
+  const dlEl   = e.target.closest('[data-sr-dl]');
+  const copyEl = e.target.closest('[data-sr-copy]');
+  if (dlEl)   { startFromSearch(decodeURIComponent(dlEl.dataset.srDl)); }
+  if (copyEl) { copyMagnet(decodeURIComponent(copyEl.dataset.srCopy)); }
+});
 document.addEventListener('change', function(e) {
   if (e.target.classList.contains('file-sel-cb')) updateSelectionBar();
 });
@@ -958,10 +964,10 @@ function buildSRCard(r) {
   const magnet    = escHtml(magnetRaw);  // only for display/attr, NOT for onclick
 
   const dlBtn = magnetRaw
-    ? '<button class="btn btn-primary" style="font-size:12px;padding:5px 10px" onclick="startFromSearch(' + JSON.stringify(magnetRaw) + ')">⬇ Baixar</button>'
+    ? '<button class="btn btn-primary" style="font-size:12px;padding:5px 10px" data-sr-dl="' + encodeURIComponent(magnetRaw) + '">⬇ Baixar</button>'
     : '';
   const magBtn = magnetRaw
-    ? '<button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" onclick="copyMagnet(' + JSON.stringify(magnetRaw) + ')" title="Copiar magnet">🔗</button>'
+    ? '<button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" data-sr-copy="' + encodeURIComponent(magnetRaw) + '" title="Copiar magnet">🔗</button>'
     : '';
 
   return `<div class="sr-card">
