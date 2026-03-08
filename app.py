@@ -659,6 +659,221 @@ def dropbox_upload():
     return jsonify(results)
 
 
+
+# ── Magnet Streaming ─────────────────────────────────────────────────────────
+# Downloads only the necessary pieces sequentially so the player can start
+# before the full file is on disk.
+
+import threading as _threading
+
+_stream_sessions = {}   # magnet_hash -> {"ses": lt.session, "handle": handle, "info": torrent_info, "lock": Lock}
+_stream_sessions_lock = _threading.Lock()
+
+
+def _magnet_hash(magnet_url: str) -> str:
+    """Extract infohash from magnet URI."""
+    m = re.search(r"btih:([0-9a-fA-F]{40}|[A-Z2-7]{32})", magnet_url, re.IGNORECASE)
+    return m.group(1).upper() if m else magnet_url[:40]
+
+
+def _get_or_create_stream_session(magnet_url: str):
+    """Return (ses, handle, torrent_info) for streaming — shared across requests."""
+    h = _magnet_hash(magnet_url)
+    with _stream_sessions_lock:
+        if h in _stream_sessions:
+            entry = _stream_sessions[h]
+            return entry["ses"], entry["handle"], entry.get("info")
+
+        magnet_url = _inject_trackers(magnet_url)
+        ses = _make_lt_session()
+        # Sequential mode: libtorrent downloads pieces in order
+        p = lt.add_torrent_params()
+        p.url = magnet_url
+        p.save_path = str(UPLOAD_DIR)
+        p.storage_mode = lt.storage_mode_t.storage_mode_sparse
+        p.flags |= lt.torrent_flags.sequential_download
+        handle = ses.add_torrent(p)
+        handle.set_sequential_download(True)
+        entry = {"ses": ses, "handle": handle, "info": None, "lock": _threading.Lock()}
+        _stream_sessions[h] = entry
+        return ses, handle, None
+
+
+@app.route("/api/stream-magnet", methods=["POST"])
+def start_stream_magnet():
+    """Inicia sessão de streaming para um magnet. Retorna stream_id (infohash)."""
+    data = request.get_json(force=True)
+    magnet_url = (data.get("magnet") or "").strip()
+    if not magnet_url or not is_magnet(magnet_url):
+        return jsonify({"error": "magnet invalido"}), 400
+    if not HAS_LT:
+        return jsonify({"error": "libtorrent nao instalado"}), 503
+
+    h = _magnet_hash(magnet_url)
+    _get_or_create_stream_session(magnet_url)
+    return jsonify({"stream_id": h, "status": "connecting"})
+
+
+@app.route("/api/stream-magnet/<stream_id>/status")
+def stream_magnet_status(stream_id):
+    """Retorna status da sessão: metadata_ready, files, progress."""
+    with _stream_sessions_lock:
+        entry = _stream_sessions.get(stream_id.upper())
+    if not entry:
+        return jsonify({"error": "stream_id nao encontrado"}), 404
+
+    handle = entry["handle"]
+    # Try to get metadata
+    if not entry.get("info") and handle.has_metadata():
+        ti = handle.get_torrent_info()
+        entry["info"] = ti
+        # Set sequential download priorities
+        handle.set_sequential_download(True)
+
+    if not handle.has_metadata():
+        s = handle.status()
+        peers = s.num_peers
+        return jsonify({"ready": False, "peers": peers, "message": "Aguardando metadados..."})
+
+    ti = entry["info"]
+    files = []
+    fs = ti.files()
+    for i in range(fs.num_files()):
+        fp = fs.file_path(i)
+        sz = fs.file_size(i)
+        ext = fp.rsplit(".", 1)[-1].lower() if "." in fp else ""
+        is_video = ext in {"mkv", "mp4", "avi", "mov", "m4v", "flv", "wmv", "ts", "webm", "mpeg", "mpg"}
+        files.append({"index": i, "path": fp, "size": sz, "video": is_video})
+
+    s = handle.status()
+    progress = round(s.progress * 100, 1)
+    dl_rate = s.download_rate
+
+    return jsonify({
+        "ready": True,
+        "name": ti.name(),
+        "files": files,
+        "progress": progress,
+        "speed": f"{dl_rate/1024/1024:.1f} MB/s" if dl_rate >= 1_000_000 else f"{dl_rate/1024:.1f} KB/s",
+        "peers": s.num_peers,
+        "seeds": s.num_seeds,
+    })
+
+
+@app.route("/api/stream-magnet/<stream_id>/play/<int:file_index>")
+def stream_magnet_play(stream_id, file_index):
+    """Stream a specific file from a magnet torrent while it's still downloading."""
+    import subprocess, shutil, time as _time
+
+    with _stream_sessions_lock:
+        entry = _stream_sessions.get(stream_id.upper())
+    if not entry:
+        abort(404)
+
+    handle = entry["handle"]
+
+    # Wait for metadata (up to 90s)
+    for _ in range(180):
+        if handle.has_metadata():
+            break
+        _time.sleep(0.5)
+
+    if not handle.has_metadata():
+        abort(503)
+
+    if not entry.get("info"):
+        entry["info"] = handle.get_torrent_info()
+
+    ti = entry["info"]
+    fs = ti.files()
+    if file_index < 0 or file_index >= fs.num_files():
+        abort(400)
+
+    rel_path = fs.file_path(file_index)
+    abs_path = (UPLOAD_DIR / rel_path).resolve()
+
+    # Prioritize this file: set piece priorities
+    # file_index pieces get deadline=0 (urgent), rest get normal
+    try:
+        handle.set_sequential_download(True)
+        # Prioritize pieces belonging to this file
+        prio = [1] * ti.num_pieces()
+        pr = fs.map_file(file_index, 0, fs.file_size(file_index))
+        for pi in range(pr.piece, min(pr.piece + pr.length // ti.piece_length() + 2, ti.num_pieces())):
+            prio[pi] = 7  # highest
+        handle.prioritize_pieces(prio)
+        # Set tight deadlines on first 30 pieces so player can start quickly
+        for pi in range(pr.piece, min(pr.piece + 30, ti.num_pieces())):
+            handle.set_piece_deadline(pi, 0)
+    except Exception:
+        pass
+
+    # Wait until we have the first ~1 MB of the file
+    file_size = fs.file_size(file_index)
+    wait_bytes = min(1 * 1024 * 1024, file_size)  # 1 MB or whole file if smaller
+
+    for _ in range(120):  # up to 60s
+        if abs_path.exists() and abs_path.stat().st_size >= wait_bytes:
+            break
+        _time.sleep(0.5)
+
+    if not abs_path.exists():
+        abort(503)
+
+    # Stream via ffmpeg (same logic as transcode_file)
+    ext = abs_path.suffix.lower()
+    ffmpeg_bin = shutil.which("ffmpeg")
+
+    if not ffmpeg_bin:
+        # Fallback: serve partial file directly
+        return serve_file(rel_path)
+
+    if ext in {".mkv", ".mp4", ".mov", ".m4v"}:
+        import subprocess as _sp, json as _json
+        probe = _sp.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", "-select_streams", "v:0", str(abs_path)],
+            capture_output=True, text=True
+        )
+        vcodec = "unknown"
+        try:
+            streams = _json.loads(probe.stdout).get("streams", [])
+            vcodec = streams[0].get("codec_name", "unknown") if streams else "unknown"
+        except Exception:
+            pass
+        needs_reencode = vcodec in ("hevc", "av1", "vp9", "mpeg2video", "mpeg4")
+        cmd = ["ffmpeg", "-re", "-i", str(abs_path),
+               "-c:v", "libx264" if needs_reencode else "copy"]
+        if needs_reencode:
+            cmd += ["-preset", "ultrafast", "-tune", "zerolatency", "-crf", "28"]
+        cmd += ["-c:a", "aac", "-b:a", "192k",
+                "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+                "-f", "mp4", "-"]
+        out_mime = "video/mp4"
+        out_name = abs_path.stem + ".mp4"
+    else:
+        cmd = ["ffmpeg", "-re", "-i", str(abs_path),
+               "-c:v", "libvpx-vp9", "-crf", "33", "-b:v", "0",
+               "-c:a", "libopus", "-b:a", "128k",
+               "-f", "webm", "-"]
+        out_mime = "video/webm"
+        out_name = abs_path.stem + ".webm"
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+    def generate():
+        try:
+            while True:
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            proc.kill()
+
+    return Response(generate(), mimetype=out_mime,
+                    headers={"Content-Disposition": f'inline; filename="{out_name}"'})
+
 # TORRENT SEARCH — agregador inline (9 fontes)
 # Uses threads + asyncio.run() per source to avoid Gunicorn event loop conflicts
 # ════════════════════════════════════════════════════════════════════════════════
