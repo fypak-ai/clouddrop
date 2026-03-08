@@ -150,7 +150,20 @@
     #search-empty { display:none; text-align:center; padding:24px; color:var(--muted); font-size:14px; }
     #search-status { font-size:12px; color:var(--muted); margin-top:8px; }
 
-  </style>
+  
+.btn-stream-magnet {
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-stream-magnet:hover { opacity: .85; }
+
+</style>
 </head>
 <body>
 <header>
@@ -1029,6 +1042,27 @@ showTab = function(name, e) {
   _origShowTab(name, e);
   if (name === 'search' && _searchSources.length === 0) initSearch();
 };
+
+
+// ── Magnet Streaming ──────────────────────────────────────────────────────
+async function streamMagnet(magnet, title) {
+  // Start stream session
+  const res = await fetch('/api/stream-magnet', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({magnet})
+  });
+  if (!res.ok) { alert('Erro ao iniciar stream'); return; }
+  const {stream_id} = await res.json();
+
+  // Open modal with loading state
+  openPlayerModal(null, title, null, {stream_id, magnet});
+}
+
+async function streamMagnetFile(stream_id, file_index, filename) {
+  const url = `/api/stream-magnet/${stream_id}/play/${file_index}`;
+  openPlayerModal(url, filename);
+}
 
 </script>
 
