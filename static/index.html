@@ -992,6 +992,9 @@ function buildSRCard(r) {
   const magBtn = magnetRaw
     ? '<button class="btn btn-ghost" style="font-size:12px;padding:5px 10px" data-sr-copy="' + encodeURIComponent(magnetRaw) + '" title="Copiar magnet">🔗</button>'
     : '';
+  const streamBtn = magnetRaw
+    ? '<button class="btn-stream-magnet" data-sr-stream="' + encodeURIComponent(magnetRaw) + '" data-sr-title="' + encodeURIComponent(r.title || '') + '" title="Stream direto sem baixar">▶ Stream</button>'
+    : '';
 
   return `<div class="sr-card">
     <div class="sr-left">
@@ -1005,7 +1008,7 @@ function buildSRCard(r) {
         <span class="sr-source">${source}</span>
       </div>
     </div>
-    <div class="sr-actions">${dlBtn}${magBtn}</div>
+    <div class="sr-actions">${dlBtn}${streamBtn}${magBtn}</div>
   </div>`;
 }
 
