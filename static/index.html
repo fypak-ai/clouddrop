@@ -556,10 +556,12 @@ document.addEventListener('click', function(e) {
   if (delEl)  { deleteFile(decodeURIComponent(delEl.dataset.del)); }
 });
 document.addEventListener('click', function(e) {
-  const dlEl   = e.target.closest('[data-sr-dl]');
-  const copyEl = e.target.closest('[data-sr-copy]');
-  if (dlEl)   { startFromSearch(decodeURIComponent(dlEl.dataset.srDl)); }
-  if (copyEl) { copyMagnet(decodeURIComponent(copyEl.dataset.srCopy)); }
+  const dlEl     = e.target.closest('[data-sr-dl]');
+  const copyEl   = e.target.closest('[data-sr-copy]');
+  const streamEl = e.target.closest('[data-sr-stream]');
+  if (dlEl)     { startFromSearch(decodeURIComponent(dlEl.dataset.srDl)); }
+  if (copyEl)   { copyMagnet(decodeURIComponent(copyEl.dataset.srCopy)); }
+  if (streamEl) { streamMagnet(decodeURIComponent(streamEl.dataset.srStream), decodeURIComponent(streamEl.dataset.srTitle||'')); }
 });
 document.addEventListener('change', function(e) {
   if (e.target.classList.contains('file-sel-cb')) updateSelectionBar();
@@ -1048,23 +1050,114 @@ showTab = function(name, e) {
 
 
 // ── Magnet Streaming ──────────────────────────────────────────────────────
-async function streamMagnet(magnet, title) {
-  // Start stream session
-  const res = await fetch('/api/stream-magnet', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({magnet})
-  });
-  if (!res.ok) { alert('Erro ao iniciar stream'); return; }
-  const {stream_id} = await res.json();
 
-  // Open modal with loading state
-  openPlayerModal(null, title, null, {stream_id, magnet});
+// Mini modal for file selection / loading state during magnet stream
+function _showStreamModal(html) {
+  let m = document.getElementById('stream-pick-modal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'stream-pick-modal';
+    m.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:2000;align-items:center;justify-content:center';
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    document.body.appendChild(m);
+  }
+  m.innerHTML = html;
+  m.style.display = 'flex';
+  return m;
 }
 
-async function streamMagnetFile(stream_id, file_index, filename) {
-  const url = `/api/stream-magnet/${stream_id}/play/${file_index}`;
-  openPlayerModal(url, filename);
+async function streamMagnet(magnet, title) {
+  const modal = _showStreamModal(`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-width:320px;max-width:480px;text-align:center">
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px">${escHtml(title||'Stream')}</div>
+      <div id="sm-status" style="color:var(--muted);font-size:13px">Conectando aos peers...</div>
+      <div id="sm-progress" style="height:4px;background:var(--border);border-radius:2px;margin:12px 0;overflow:hidden">
+        <div id="sm-bar" style="height:100%;width:0%;background:#7c3aed;transition:width .3s"></div>
+      </div>
+      <div id="sm-files" style="margin-top:8px;text-align:left;max-height:240px;overflow-y:auto"></div>
+      <button onclick="document.getElementById('stream-pick-modal').remove()" style="margin-top:14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 16px;color:var(--muted);cursor:pointer;font-size:12px">Cancelar</button>
+    </div>`);
+
+  // Start stream session on server
+  let stream_id;
+  try {
+    const res = await fetch('/api/stream-magnet', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({magnet})
+    });
+    if (!res.ok) { document.getElementById('sm-status').textContent = 'Erro ao conectar'; return; }
+    stream_id = (await res.json()).stream_id;
+  } catch(e) {
+    document.getElementById('sm-status').textContent = 'Erro: ' + e.message;
+    return;
+  }
+
+  // Poll status until metadata is ready
+  let attempts = 0;
+  const poll = async () => {
+    if (!document.getElementById('stream-pick-modal')) return; // user cancelled
+    attempts++;
+    try {
+      const r = await fetch(`/api/stream-magnet/${stream_id}/status`);
+      const d = await r.json();
+      const statusEl = document.getElementById('sm-status');
+      const barEl    = document.getElementById('sm-bar');
+      if (!statusEl) return; // modal closed
+
+      if (!d.ready) {
+        statusEl.textContent = d.message || 'Aguardando metadados... (' + (d.peers||0) + ' peers)';
+        if (attempts < 180) setTimeout(poll, 1000);
+        else statusEl.textContent = 'Timeout — sem peers encontrados';
+        return;
+      }
+
+      // Metadata ready — show file list
+      barEl.style.width = d.progress + '%';
+      const videos = (d.files||[]).filter(f => f.video);
+      if (videos.length === 0) {
+        statusEl.textContent = 'Nenhum vídeo encontrado neste torrent';
+        return;
+      }
+      if (videos.length === 1) {
+        // Auto-play single video
+        modal.remove();
+        _playStreamFile(stream_id, videos[0].index, videos[0].path.split('/').pop());
+        return;
+      }
+      // Multiple videos — show list
+      statusEl.textContent = d.name + ' — ' + d.progress + '% (' + d.speed + ')';
+      const filesEl = document.getElementById('sm-files');
+      if (filesEl) {
+        filesEl.innerHTML = videos.map(f =>
+          `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(f.path)}">${escHtml(f.path.split('/').pop())}</span>
+            <button class="btn-stream-magnet" style="flex-shrink:0;font-size:11px;padding:4px 10px"
+              onclick="document.getElementById('stream-pick-modal').remove();_playStreamFile('${stream_id}',${f.index},'${escHtml(f.path.split('/').pop())}')">▶ Play</button>
+          </div>`
+        ).join('');
+        // Keep polling progress
+        setTimeout(poll, 3000);
+      }
+    } catch(e) {
+      if (document.getElementById('sm-status'))
+        document.getElementById('sm-status').textContent = 'Erro: ' + e.message;
+    }
+  };
+  setTimeout(poll, 800);
+}
+
+function _playStreamFile(stream_id, file_index, filename) {
+  const streamUrl = `/api/stream-magnet/${stream_id}/play/${file_index}`;
+  document.getElementById('player-title').textContent = filename;
+  document.getElementById('player-dl-link').href = streamUrl;
+  document.getElementById('player-dl-link').download = filename;
+  document.getElementById('player-video-wrap').style.display = 'block';
+  document.getElementById('player-audio-wrap').style.display = 'none';
+  const v = document.getElementById('player-video');
+  v.src = streamUrl;
+  v.load();
+  document.getElementById('player-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
 }
 
 </script>
